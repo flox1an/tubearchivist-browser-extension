@@ -5,74 +5,130 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TubeArchivist Companion</title>
-    <link rel="stylesheet" href="https://fonts.googleapi.com/css?family=Sen" type="text/css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <div class="logo">
-            <a href="#" id="ta-url" target="_blank">
-                <img src="/images/logo.png" alt="ta-logo">
+        <header class="app-header">
+            <a href="#" id="ta-url" class="brand" target="_blank" rel="noreferrer">
+                <img src="/images/logo.png" alt="TubeArchivist logo">
+                <div class="brand-copy">
+                    <span class="eyebrow">Browser Companion</span>
+                    <strong>TubeArchivist</strong>
+                </div>
             </a>
-            <span>v0.4.1</span>
-        </div>
-        <hr>
-        <form class="login-form">
-            <label for="full-url">Tube Archivist URL:</label>
-            <input type="text" id="full-url" name="url">
-            <label for="api-key">Tube Archivist API Key:</label>
-            <input type="password" id="api-key" name="api-key">
-        </form>
-        <div class="submit">
-            <button id="save-login">Save</button><span id="status-icon">&#9744;</span>
-        </div>
-        <div id="error-out"></div>
-        <hr>
-        <p>Cookies:</p>
-        <div class="options">
-            <div>
-                <p>TA cookies: <span id="sendCookiesStatus" /></p>
+            <span id="extension-version" class="version">v0.0.0</span>
+        </header>
+
+        <section class="card connection-card" id="connection-card" data-collapsed="false">
+            <div class="section-head">
+                <div>
+                    <h1>Connection</h1>
+                    <p>Settings save automatically as you type.</p>
+                </div>
+                <div class="connection-head-actions">
+                    <span id="connection-state" class="status-badge" data-state="idle">Not tested</span>
+                </div>
             </div>
-            <div>
+            <div id="connection-summary" class="connection-summary">
+                <div class="connection-summary-row">
+                    <strong id="connection-summary-url">No connection configured</strong>
+                    <button type="button" id="connection-toggle" class="icon-button" aria-label="Edit connection">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.04a1.003 1.003 0 0 0 0-1.42l-2.5-2.5a1.003 1.003 0 0 0-1.42 0l-1.96 1.96 3.75 3.75 2.13-1.79z"/>
+                        </svg>
+                    </button>
+                </div>
+                <p id="connection-summary-meta">Open this section to set your URL and API token.</p>
+            </div>
+            <form id="connection-form" class="settings-form" novalidate>
+                <label class="field" for="full-url">
+                    <span>Tube Archivist URL</span>
+                    <input type="text" id="full-url" name="url" placeholder="https://demo.tubearchivist.com">
+                </label>
+                <label class="field" for="api-key">
+                    <span>API token</span>
+                    <input type="password" id="api-key" name="api-key" placeholder="Paste your API token">
+                </label>
+            </form>
+            <div class="section-actions">
+                <p id="save-state" class="hint">Changes save automatically and the connection is checked for you.</p>
+            </div>
+            <div id="error-out" class="feedback" role="alert"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <div>
+                    <h2>Cookies</h2>
+                    <p>Keep TubeArchivist ready to access YouTube cookies.</p>
+                </div>
+                <span id="sendCookiesStatus" class="status-badge" data-state="idle">Unknown</span>
+            </div>
+            <label class="toggle-row" for="continuous-sync">
+                <div>
+                    <strong>Continuous cookie sync</strong>
+                    <p>Automatically refresh stored cookies after changes in your browser.</p>
+                </div>
                 <input type="checkbox" id="continuous-sync" name="continuous-sync">
-                <span>Continuous Cookie Sync</span>
+            </label>
+            <div class="button-row">
+                <button type="button" id="sendCookies">Sync now</button>
+                <button type="button" id="showCookies" class="secondary">Show cookies</button>
             </div>
-            <button id="sendCookies">Copy Now</button>
-            <button id="showCookies">Show Cookie</button><br>
             <textarea id="cookieLinesResponse" readonly></textarea>
-        </div>
-        <p>Download:</p>
-        <div class="options">
-            <div>
-                <input type="checkbox" id="watch-auto-queue" name="watch-auto-queue">
-                <span>Auto Queue Watched Videos</span>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <div>
+                    <h2>Downloads</h2>
+                    <p>Choose how videos should be queued from YouTube.</p>
+                </div>
             </div>
-            <div>
-                <input type="checkbox" id="like-auto-queue" name="like-auto-queue">
-                <span>Auto Queue Liked Videos</span>
+            <div class="toggle-list">
+                <label class="toggle-row" for="watch-auto-queue">
+                    <div>
+                        <strong>Auto queue watched videos</strong>
+                        <p>Add a video once you have genuinely watched enough of it.</p>
+                    </div>
+                    <input type="checkbox" id="watch-auto-queue" name="watch-auto-queue">
+                </label>
+                <label class="toggle-row" for="like-auto-queue">
+                    <div>
+                        <strong>Auto queue liked videos</strong>
+                        <p>Add a video when you press Like, unless it already exists in TubeArchivist.</p>
+                    </div>
+                    <input type="checkbox" id="like-auto-queue" name="like-auto-queue">
+                </label>
+                <label class="toggle-row" for="autostart">
+                    <div>
+                        <strong>Autostart downloads</strong>
+                        <p>Start downloads immediately when the extension sends them.</p>
+                    </div>
+                    <input type="checkbox" id="autostart" name="autostart">
+                </label>
             </div>
-            <div>
-                <input type="checkbox" id="autostart" name="autostart">
-                <span>Autostart Downloads</span>
-            </div>
-        </div>
-        <hr>
-        <div class="icons">
-            <div>
-                <a href="https://www.reddit.com/r/TubeArchivist/" target="_blank">
-                    <img src="/images/social/reddit.svg" alt="reddit-icon"></a>
-                <a href="https://www.tubearchivist.com/discord" target="_blank">
-                    <img src="/images/social/discord.svg" alt="discord-icon"></a>
-                <a href="https://github.com/tubearchivist/browser-extension/" target="_blank">
-                    <img src="/images/social/github.svg" alt="github-icon">
+        </section>
+
+        <footer class="icons">
+            <div class="social-links">
+                <a href="https://www.reddit.com/r/TubeArchivist/" target="_blank" rel="noreferrer">
+                    <img src="/images/social/reddit.svg" alt="Reddit">
+                </a>
+                <a href="https://www.tubearchivist.com/discord" target="_blank" rel="noreferrer">
+                    <img src="/images/social/discord.svg" alt="Discord">
+                </a>
+                <a href="https://github.com/tubearchivist/browser-extension/" target="_blank" rel="noreferrer">
+                    <img src="/images/social/github.svg" alt="GitHub">
                 </a>
             </div>
             <div>
-                <a href="https://github.com/tubearchivist/browser-extension/issues">
-                    <img src="/images/question.svg" alt="question-icon">
+                <a href="https://github.com/tubearchivist/browser-extension/issues" target="_blank" rel="noreferrer">
+                    <img src="/images/question.svg" alt="Support">
                 </a>
             </div>
-        </div>
+        </footer>
     </div>
     <script type="text/javascript" src="popup.js"></script>
 </body>

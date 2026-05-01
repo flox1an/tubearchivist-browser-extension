@@ -5,6 +5,34 @@ Loaded into popup index.html
 'use strict';
 
 let browserType = getBrowser();
+const autosaveDelayMs = 500;
+const connectionToggleLockMs = 250;
+const visibleDisplay = 'block';
+const hiddenDisplay = 'none';
+
+const connectionCard = document.getElementById('connection-card');
+const taUrlLink = document.getElementById('ta-url');
+const extensionVersion = document.getElementById('extension-version');
+const errorOut = document.getElementById('error-out');
+const fullUrlInput = document.getElementById('full-url');
+const apiKeyInput = document.getElementById('api-key');
+const connectionState = document.getElementById('connection-state');
+const connectionToggle = document.getElementById('connection-toggle');
+const connectionSummaryUrl = document.getElementById('connection-summary-url');
+const connectionSummaryMeta = document.getElementById('connection-summary-meta');
+const saveState = document.getElementById('save-state');
+const cookieStatus = document.getElementById('sendCookiesStatus');
+const cookieResponseTextArea = document.getElementById('cookieLinesResponse');
+const showCookiesButton = document.getElementById('showCookies');
+const continuousSyncInput = document.getElementById('continuous-sync');
+const autostartInput = document.getElementById('autostart');
+const watchAutoQueueInput = document.getElementById('watch-auto-queue');
+const likeAutoQueueInput = document.getElementById('like-auto-queue');
+
+let autosaveTimeout = null;
+let connectionRequestToken = 0;
+let connectionCollapsed = false;
+let connectionToggleLocked = false;
 
 // boilerplate to dedect browser type api
 function getBrowser() {
@@ -20,6 +48,28 @@ function getBrowser() {
   }
 }
 
+function storageGet(keys) {
+  return new Promise(resolve => {
+    browserType.storage.local.get(keys, result => resolve(result));
+  });
+}
+
+function storageSet(values) {
+  return new Promise((resolve, reject) => {
+    browserType.storage.local.set(values, () => {
+      if (browserType.runtime.lastError) {
+        reject(browserType.runtime.lastError);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function setExtensionVersion() {
+  extensionVersion.textContent = `v${browserType.runtime.getManifest().version}`;
+}
+
 async function sendMessage(message) {
   let { success, value } = await browserType.runtime.sendMessage(message);
   if (!success) {
@@ -28,94 +78,196 @@ async function sendMessage(message) {
   return value;
 }
 
-let errorOut = document.getElementById('error-out');
 function setError(message) {
-  errorOut.style.display = 'initial';
-  errorOut.innerText = message;
+  errorOut.style.display = visibleDisplay;
+  errorOut.textContent = message;
 }
 
 function clearError() {
-  errorOut.style.display = 'none';
+  errorOut.style.display = hiddenDisplay;
+  errorOut.textContent = '';
 }
 
-function clearTempLocalStorage() {
-  browserType.storage.local.remove('popupApiKey');
-  browserType.storage.local.remove('popupFullUrl');
+function setHint(message, state = 'idle') {
+  saveState.dataset.state = state;
+  saveState.textContent = message;
 }
 
-// store access details
-document.getElementById('save-login').addEventListener('click', function () {
-  let url = document.getElementById('full-url').value;
-  if (!url.includes('://')) {
-    url = 'http://' + url;
-  }
-  try {
+function setBadge(element, message, state = 'idle') {
+  element.dataset.state = state;
+  element.textContent = message;
+}
+
+function setConnectionCollapsed(collapsed) {
+  connectionCollapsed = collapsed;
+  connectionCard.dataset.collapsed = collapsed ? 'true' : 'false';
+}
+
+function setConnectionStatus({ badge, badgeState, hint, hintState, error = null, collapsed = null }) {
+  setBadge(connectionState, badge, badgeState);
+  setHint(hint, hintState);
+  if (error) {
+    setError(error);
+  } else {
     clearError();
-    let parsed = new URL(url);
-    let toStore = {
-      access: {
-        url: `${parsed.protocol}//${parsed.hostname}`,
-        port: parsed.port || (parsed.protocol === 'https:' ? '443' : '80'),
-        apiKey: document.getElementById('api-key').value,
-      },
-    };
-    browserType.storage.local.set(toStore, function () {
-      console.log('Stored connection details: ' + JSON.stringify(toStore));
-      pingBackend();
-    });
-  } catch (e) {
-    setError(e.message);
   }
-});
+  if (collapsed !== null) {
+    setConnectionCollapsed(collapsed);
+  }
+}
 
-// verify connection status
-document.getElementById('status-icon').addEventListener('click', function () {
-  pingBackend();
-});
+function updateConnectionSummary(access) {
+  if (!access?.url) {
+    connectionSummaryUrl.textContent = 'No connection configured';
+    connectionSummaryMeta.textContent = 'Open this section to set your URL and API token.';
+    return;
+  }
 
-// send cookie
+  connectionSummaryUrl.textContent = formatAccessUrl(access);
+  connectionSummaryMeta.textContent = access.apiKey
+    ? ''
+    : 'API token missing. Open this section to finish setup.';
+}
+
+function formatAccessUrl(access) {
+  if (!access) return '#';
+
+  if (
+    (access.url.startsWith('http://') && access.port === '80') ||
+    (access.url.startsWith('https://') && access.port === '443')
+  ) {
+    return access.url;
+  }
+
+  return `${access.url}:${access.port}`;
+}
+
+function addUrl(access) {
+  taUrlLink.setAttribute('href', formatAccessUrl(access));
+  updateConnectionSummary(access);
+}
+
+function buildAccessFromInputs() {
+  let draftUrl = fullUrlInput.value.trim();
+  let draftApiKey = apiKeyInput.value.trim();
+
+  if (!draftUrl) {
+    throw new Error('Enter your Tube Archivist URL.');
+  }
+
+  let normalizedUrl = draftUrl.includes('://') ? draftUrl : `http://${draftUrl}`;
+  let parsed = new URL(normalizedUrl);
+
+  return {
+    popupFullUrl: draftUrl,
+    popupApiKey: draftApiKey,
+    access: {
+      url: `${parsed.protocol}//${parsed.hostname}`,
+      port: parsed.port || (parsed.protocol === 'https:' ? '443' : '80'),
+      apiKey: draftApiKey,
+    },
+  };
+}
+
+async function persistDraftFields() {
+  await storageSet({
+    popupFullUrl: fullUrlInput.value.trim(),
+    popupApiKey: apiKeyInput.value.trim(),
+  });
+}
+
+async function commitConnectionSettings() {
+  clearTimeout(autosaveTimeout);
+  autosaveTimeout = null;
+
+  try {
+    await persistDraftFields();
+    let payload = buildAccessFromInputs();
+    setConnectionStatus({
+      badge: 'Saved',
+      badgeState: 'warning',
+      hint: 'Saved automatically.',
+      hintState: 'success',
+    });
+    await storageSet({
+      access: payload.access,
+      popupFullUrl: payload.popupFullUrl,
+      popupApiKey: payload.popupApiKey,
+    });
+    addUrl(payload.access);
+    updateConnectionSummary(payload.access);
+
+    if (payload.access.url && payload.access.apiKey) {
+      return await pingBackend();
+    }
+
+    setConnectionStatus({
+      badge: 'Saved',
+      badgeState: 'warning',
+      hint: 'Saved automatically. Add an API token to test the connection.',
+      hintState: 'warning',
+      collapsed: false,
+    });
+    return true;
+  } catch (error) {
+    let message = error?.message ?? error;
+    setConnectionStatus({
+      badge: 'Needs attention',
+      badgeState: 'error',
+      hint: 'Draft saved locally. Enter a valid URL to apply changes.',
+      hintState: 'warning',
+      error: message,
+      collapsed: false,
+    });
+    return false;
+  }
+}
+
+function scheduleConnectionAutosave() {
+  clearTimeout(autosaveTimeout);
+  setConnectionStatus({
+    badge: 'Saving...',
+    badgeState: 'saving',
+    hint: 'Saving changes...',
+    hintState: 'idle',
+    collapsed: false,
+  });
+  autosaveTimeout = window.setTimeout(() => {
+    commitConnectionSettings();
+  }, autosaveDelayMs);
+}
+
 document.getElementById('sendCookies').addEventListener('click', function () {
   sendCookie();
 });
 
-// show cookies
-document.getElementById('showCookies').addEventListener('click', function () {
+showCookiesButton.addEventListener('click', function () {
   showCookies();
 });
 
-// continuous sync
-document.getElementById('continuous-sync').addEventListener('click', function () {
-  toggleContinuousSync();
+connectionToggle.addEventListener('click', () => {
+  if (connectionToggleLocked) return;
+
+  connectionToggleLocked = true;
+  setConnectionCollapsed(!connectionCollapsed);
+  if (!connectionCollapsed) {
+    fullUrlInput.focus();
+  }
+  window.setTimeout(() => {
+    connectionToggleLocked = false;
+  }, connectionToggleLockMs);
 });
 
-// autostart
-document.getElementById('autostart').addEventListener('click', function () {
-  toggleAutostart();
-});
-
-// auto queue watched videos
-document.getElementById('watch-auto-queue').addEventListener('click', function () {
-  toggleWatchAutoQueue();
-});
-
-// auto queue liked videos
-document.getElementById('like-auto-queue').addEventListener('click', function () {
-  toggleLikeAutoQueue();
-});
-
-let fullUrlInput = document.getElementById('full-url');
-fullUrlInput.addEventListener('change', () => {
-  browserType.storage.local.set({
-    popupFullUrl: fullUrlInput.value,
+for (let input of [fullUrlInput, apiKeyInput]) {
+  input.addEventListener('input', async () => {
+    await persistDraftFields();
+    scheduleConnectionAutosave();
   });
-});
 
-let apiKeyInput = document.getElementById('api-key');
-apiKeyInput.addEventListener('change', () => {
-  browserType.storage.local.set({
-    popupApiKey: apiKeyInput.value,
+  input.addEventListener('blur', async () => {
+    await commitConnectionSettings();
   });
-});
+}
 
 function sendCookie() {
   console.log('popup send cookie');
@@ -123,8 +275,8 @@ function sendCookie() {
 
   function handleResponse(message) {
     console.log('handle cookie response: ' + JSON.stringify(message));
-    let validattionMessage = `enabled, last verified ${message.validated_str}`;
-    document.getElementById('sendCookiesStatus').innerText = validattionMessage;
+    let validationMessage = message.validated_str || 'Synced';
+    setBadge(cookieStatus, validationMessage, 'enabled');
   }
 
   function handleError(error) {
@@ -138,45 +290,30 @@ function sendCookie() {
 
 function showCookies() {
   console.log('popup show cookies');
-  const textArea = document.getElementById('cookieLinesResponse');
-
   function handleResponse(message) {
-    textArea.value = message.join('\n');
-    textArea.style.display = 'initial';
+    cookieResponseTextArea.value = message.join('\n');
+    cookieResponseTextArea.style.display = visibleDisplay;
   }
   function handleError(error) {
     console.log(`Error: ${error}`);
+    setError(error);
   }
 
-  if (textArea.value) {
-    textArea.value = '';
-    textArea.style.display = 'none';
-    document.getElementById('showCookies').textContent = 'Show Cookie';
+  if (cookieResponseTextArea.value) {
+    cookieResponseTextArea.value = '';
+    cookieResponseTextArea.style.display = hiddenDisplay;
+    showCookiesButton.textContent = 'Show cookies';
   } else {
     let sending = sendMessage({ type: 'getCookieLines' });
     sending.then(handleResponse, handleError);
-    document.getElementById('showCookies').textContent = 'Hide Cookie';
+    showCookiesButton.textContent = 'Hide cookies';
   }
 }
 
-function toggleContinuousSync() {
-  const checked = document.getElementById('continuous-sync').checked;
+function storeCheckboxPreference(storageKey, checked) {
   let toStore = {
-    continuousSync: {
-      checked: checked,
-    },
-  };
-  browserType.storage.local.set(toStore, function () {
-    console.log('stored option: ' + JSON.stringify(toStore));
-  });
-  sendMessage({ type: 'continuousSync', checked });
-}
-
-function toggleAutostart() {
-  let checked = document.getElementById('autostart').checked;
-  let toStore = {
-    autostart: {
-      checked: checked,
+    [storageKey]: {
+      checked,
     },
   };
   browserType.storage.local.set(toStore, function () {
@@ -184,54 +321,81 @@ function toggleAutostart() {
   });
 }
 
-function toggleWatchAutoQueue() {
-  let checked = document.getElementById('watch-auto-queue').checked;
-  let toStore = {
-    watchAutoQueue: {
-      checked: checked,
-    },
-  };
-  browserType.storage.local.set(toStore, function () {
-    console.log('stored option: ' + JSON.stringify(toStore));
+function bindStoredCheckbox(input, storageKey, messageBuilder = null) {
+  input.addEventListener('change', function () {
+    let checked = input.checked;
+    storeCheckboxPreference(storageKey, checked);
+    if (messageBuilder) {
+      sendMessage(messageBuilder(checked));
+    }
   });
 }
 
-function toggleLikeAutoQueue() {
-  let checked = document.getElementById('like-auto-queue').checked;
-  let toStore = {
-    likeAutoQueue: {
-      checked: checked,
-    },
-  };
-  browserType.storage.local.set(toStore, function () {
-    console.log('stored option: ' + JSON.stringify(toStore));
-  });
+function hydrateStoredCheckbox(result, storageKey, input, missingMessage) {
+  if (!result[storageKey] || result[storageKey].checked === false) {
+    console.log(missingMessage);
+    return;
+  }
+  console.log('set options: ' + JSON.stringify(result));
+  input.checked = true;
 }
+
+bindStoredCheckbox(continuousSyncInput, 'continuousSync', checked => ({
+  type: 'continuousSync',
+  checked,
+}));
+bindStoredCheckbox(autostartInput, 'autostart');
+bindStoredCheckbox(watchAutoQueueInput, 'watchAutoQueue');
+bindStoredCheckbox(likeAutoQueueInput, 'likeAutoQueue');
 
 // send ping message to TA backend
 async function pingBackend() {
-  clearError();
-  clearTempLocalStorage();
+  setConnectionStatus({
+    badge: 'Testing...',
+    badgeState: 'saving',
+    hint: 'Saved automatically. Testing connection...',
+    hintState: 'idle',
+  });
+
+  let requestToken = ++connectionRequestToken;
+
   function handleResponse() {
+    if (requestToken !== connectionRequestToken) return;
     console.log('connection validated');
-    setStatusIcon(true);
+    setConnectionStatus({
+      badge: 'Connected',
+      badgeState: 'connected',
+      hint: 'Saved automatically. Connection verified.',
+      hintState: 'success',
+      collapsed: true,
+    });
   }
 
   function handleError(error) {
+    if (requestToken !== connectionRequestToken) return;
     console.log(`Verify got error: ${error}`);
-    setStatusIcon(false);
-    setError(error);
+    setConnectionStatus({
+      badge: 'Connection failed',
+      badgeState: 'error',
+      hint: 'Saved automatically. Review your URL or API token, then test again.',
+      hintState: 'warning',
+      error,
+      collapsed: false,
+    });
   }
 
   console.log('ping TA server');
   let sending = sendMessage({ type: 'verify' });
-  sending.then(handleResponse, handleError);
-}
-
-// add url to image
-function addUrl(access) {
-  const url = `${access.url}:${access.port}`;
-  document.getElementById('ta-url').setAttribute('href', url);
+  return sending.then(
+    () => {
+      handleResponse();
+      return true;
+    },
+    error => {
+      handleError(error);
+      return false;
+    }
+  );
 }
 
 function setCookieState() {
@@ -239,121 +403,74 @@ function setCookieState() {
   function handleResponse(message) {
     console.log(message);
     if (!message.cookie_enabled) {
-      document.getElementById('sendCookiesStatus').innerText = 'disabled';
+      setBadge(cookieStatus, 'Disabled', 'disabled');
     } else {
-      let validattionMessage = 'enabled';
-      if (message.validated_str) {
-        validattionMessage += `, last verified ${message.validated_str}`;
-      }
-      document.getElementById('sendCookiesStatus').innerText = validattionMessage;
+      let validationMessage = message.validated_str || 'Ready';
+      setBadge(cookieStatus, validationMessage, 'enabled');
     }
   }
 
   function handleError(error) {
     console.log(`Error: ${error}`);
     setError(error);
+    setBadge(cookieStatus, 'Unavailable', 'error');
   }
 
   console.log('set cookie state');
   let sending = sendMessage({ type: 'cookieState' });
   sending.then(handleResponse, handleError);
-  document.getElementById('sendCookies').checked = true;
-}
-
-// change status icon based on connection status
-function setStatusIcon(connected) {
-  let statusIcon = document.getElementById('status-icon');
-  if (connected) {
-    statusIcon.innerHTML = '&#9745;';
-    statusIcon.style.color = 'green';
-  } else {
-    statusIcon.innerHTML = '&#9746;';
-    statusIcon.style.color = 'red';
-  }
 }
 
 // fill in form
 document.addEventListener('DOMContentLoaded', async () => {
+  setExtensionVersion();
+
   async function onGot(item) {
+    let fullUrl = item.popupFullUrl;
+
+    if (!fullUrl && item.access) {
+      fullUrl = formatAccessUrl(item.access);
+    }
+    if (fullUrl != null) {
+      fullUrlInput.value = fullUrl;
+    }
+    if (item.popupApiKey != null) {
+      apiKeyInput.value = item.popupApiKey;
+    } else if (item.access?.apiKey != null) {
+      apiKeyInput.value = item.access.apiKey;
+    }
+
     if (!item.access) {
       console.log('no access details found');
-      if (item.popupFullUrl != null && fullUrlInput.value === '') {
-        fullUrlInput.value = item.popupFullUrl;
-      }
-      if (item.popupApiKey != null && apiKeyInput.value === '') {
-        apiKeyInput.value = item.popupApiKey;
-      }
-      setStatusIcon(false);
+      setConnectionStatus({
+        badge: 'Not connected',
+        badgeState: 'warning',
+        hint: 'Enter your Tube Archivist URL and API token to get started.',
+        hintState: 'idle',
+        collapsed: false,
+      });
+      updateConnectionSummary(null);
       return;
     }
-    let { url, port } = item.access;
-    let fullUrl = url;
-    if (!(url.startsWith('http://') && port === '80')) {
-      fullUrl += `:${port}`;
-    }
-    document.getElementById('full-url').value = fullUrl;
-    document.getElementById('api-key').value = item.access.apiKey;
-    pingBackend();
+
     addUrl(item.access);
+    updateConnectionSummary(item.access);
+    pingBackend();
     setCookieState();
   }
 
-  async function setContinuousCookiesOptions(result) {
-    if (!result.continuousSync || result.continuousSync.checked === false) {
-      console.log('continuous cookie sync not set');
-      return;
-    }
-    console.log('set options: ' + JSON.stringify(result));
-    document.getElementById('continuous-sync').checked = true;
-  }
-
-  async function setAutostartOption(result) {
-    console.log(result);
-    if (!result.autostart || result.autostart.checked === false) {
-      console.log('autostart not set');
-      return;
-    }
-    console.log('set options: ' + JSON.stringify(result));
-    document.getElementById('autostart').checked = true;
-  }
-
-  async function setWatchAutoQueueOption(result) {
-    console.log(result);
-    if (!result.watchAutoQueue || result.watchAutoQueue.checked === false) {
-      console.log('watch auto queue not set');
-      return;
-    }
-    console.log('set options: ' + JSON.stringify(result));
-    document.getElementById('watch-auto-queue').checked = true;
-  }
-
-  async function setLikeAutoQueueOption(result) {
-    console.log(result);
-    if (!result.likeAutoQueue || result.likeAutoQueue.checked === false) {
-      console.log('like auto queue not set');
-      return;
-    }
-    console.log('set options: ' + JSON.stringify(result));
-    document.getElementById('like-auto-queue').checked = true;
-  }
-
-  browserType.storage.local.get(['access', 'popupFullUrl', 'popupApiKey'], function (result) {
-    onGot(result);
-  });
-
+  let initialState = await storageGet(['access', 'popupFullUrl', 'popupApiKey']);
+  await onGot(initialState);
   browserType.storage.local.get('continuousSync', function (result) {
-    setContinuousCookiesOptions(result);
+    hydrateStoredCheckbox(result, 'continuousSync', continuousSyncInput, 'continuous cookie sync not set');
   });
-
   browserType.storage.local.get('autostart', function (result) {
-    setAutostartOption(result);
+    hydrateStoredCheckbox(result, 'autostart', autostartInput, 'autostart not set');
   });
-
   browserType.storage.local.get('watchAutoQueue', function (result) {
-    setWatchAutoQueueOption(result);
+    hydrateStoredCheckbox(result, 'watchAutoQueue', watchAutoQueueInput, 'watch auto queue not set');
   });
-
   browserType.storage.local.get('likeAutoQueue', function (result) {
-    setLikeAutoQueueOption(result);
+    hydrateStoredCheckbox(result, 'likeAutoQueue', likeAutoQueueInput, 'like auto queue not set');
   });
 });
