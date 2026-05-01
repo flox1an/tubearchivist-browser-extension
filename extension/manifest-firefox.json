@@ -1,18 +1,20 @@
 {
-    "manifest_version": 2,
+    "manifest_version": 3,
     "name": "TubeArchivist Companion",
     "description": "Interact with your selfhosted TA server.",
     "version": "0.4.1",
     "icons": {
         "128": "/images/icon128.png"
     },
-    "browser_action": {
+    "action": {
         "default_icon": "/images/icon.png",
         "default_popup": "index.html"
     },
     "permissions": [
         "storage",
-        "cookies",
+        "cookies"
+    ],
+    "host_permissions": [
         "https://*.youtube.com/*"
     ],
     "content_scripts": [

@@ -89,6 +89,51 @@ const defaultIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
 
 let browserType = getBrowser();
 
+const titleContainerSelector = [
+  '#video-title',
+  'a.ytLockupMetadataViewModelTitle',
+  'a[href^="/shorts/"]',
+].join(', ');
+
+const videoCardRootSelector = [
+  'yt-lockup-view-model',
+  'yt-lockup-metadata-view-model',
+  'ytd-rich-grid-media',
+  'ytd-rich-item-renderer',
+  'ytd-video-renderer',
+  'ytd-compact-video-renderer',
+  'ytd-grid-video-renderer',
+  'ytd-playlist-video-renderer',
+].join(', ');
+
+const videoLinkSelector = [
+  'a[href^="/watch"]',
+  'a[href^="/shorts/"]',
+  'a[href*="youtube.com/watch"]',
+  'a[href*="youtube.com/shorts/"]',
+].join(', ');
+
+const videoButtonVariantStyles = {
+  lockup: {
+    position: 'absolute',
+    top: 0,
+    right: '32px',
+    zIndex: 2,
+  },
+  default: {
+    position: 'absolute',
+    top: 0,
+    right: '32px',
+    zIndex: 2,
+  },
+  'shorts-grid': {
+    position: 'absolute',
+    top: '8px',
+    right: '8px',
+    zIndex: 2,
+  },
+};
+
 // boilerplate to dedect browser type api
 function getBrowser() {
   if (typeof chrome !== 'undefined') {
@@ -366,13 +411,7 @@ function buildChannelDownloadButton() {
 }
 
 function getTitleContainers() {
-  let elements = document.querySelectorAll(
-    [
-      '#video-title',
-      'a.ytLockupMetadataViewModelTitle',
-      'a[href^="/shorts/"]',
-    ].join(', ')
-  );
+  let elements = document.querySelectorAll(titleContainerSelector);
   let videoNodes = [];
   let seen = new Set();
   elements.forEach(element => {
@@ -382,6 +421,7 @@ function getTitleContainers() {
     let videoId = getVideoId(element);
     if (!videoId || seen.has(videoId)) return;
 
+    element.taVideoId = videoId;
     seen.add(videoId);
     videoNodes.push(element);
   });
@@ -389,39 +429,55 @@ function getTitleContainers() {
 }
 
 function getVideoId(titleContainer) {
-  if (!titleContainer) return undefined;
+  return getVideoInfo(titleContainer)?.videoId;
+}
+
+function getVideoHref(titleContainer) {
+  return getVideoInfo(titleContainer)?.href || null;
+}
+
+function getVideoInfo(titleContainer) {
+  if (!titleContainer) return null;
+  if (titleContainer.taVideoInfo) return titleContainer.taVideoInfo;
 
   let href = getNearestLink(titleContainer);
-  if (!href) return;
+  if (!href) return null;
 
   try {
     let url = new URL(href, location.href);
-    if (url.pathname === '/watch') return url.searchParams.get('v') || undefined;
-    if (url.pathname.startsWith('/shorts/')) return url.pathname.split('/')[2] || undefined;
+    let videoId;
+    if (url.pathname === '/watch') {
+      videoId = url.searchParams.get('v') || undefined;
+    } else if (url.pathname.startsWith('/shorts/')) {
+      videoId = url.pathname.split('/')[2] || undefined;
+    }
+    if (!videoId) return null;
+
+    titleContainer.taVideoInfo = {
+      href,
+      isShorts: url.pathname.startsWith('/shorts/'),
+      videoId,
+    };
+    return titleContainer.taVideoInfo;
   } catch {
     // not a valid URL
   }
-  return undefined;
+  return null;
 }
 
 function getVideoCardRoot(titleContainer) {
-  return titleContainer?.closest(
-    [
-      'yt-lockup-view-model',
-      'yt-lockup-metadata-view-model',
-      'ytd-rich-grid-media',
-      'ytd-rich-item-renderer',
-      'ytd-video-renderer',
-      'ytd-compact-video-renderer',
-      'ytd-grid-video-renderer',
-      'ytd-playlist-video-renderer',
-    ].join(', ')
-  );
+  if (!titleContainer) return null;
+  if (titleContainer.taCardRoot) return titleContainer.taCardRoot;
+
+  let cardRoot = titleContainer.closest(videoCardRootSelector);
+  if (cardRoot) {
+    titleContainer.taCardRoot = cardRoot;
+  }
+  return cardRoot;
 }
 
 function isShortsCardTitle(titleContainer) {
-  let href = getNearestLink(titleContainer);
-  return Boolean(href?.startsWith('/shorts/'));
+  return Boolean(getVideoInfo(titleContainer)?.isShorts);
 }
 
 function getVideoButtonPlacement(titleContainer) {
@@ -461,7 +517,7 @@ function isUpcomingVideoCard(titleContainer) {
 function buildVideoButton(titleContainer, options = {}) {
   if (isUpcomingVideoCard(titleContainer)) return null;
 
-  let videoId = getVideoId(titleContainer);
+  let videoId = titleContainer.taVideoId || getVideoId(titleContainer);
   if (!videoId) return;
   let { variant } = options;
 
@@ -486,28 +542,7 @@ function buildVideoButton(titleContainer, options = {}) {
     opacity: 0,
   });
 
-  if (variant === 'lockup') {
-    Object.assign(dlButton.style, {
-      position: 'absolute',
-      top: 0,
-      right: '32px',
-      zIndex: 2,
-    });
-  } else if (variant === 'default') {
-    Object.assign(dlButton.style, {
-      position: 'absolute',
-      top: 0,
-      right: '32px',
-      zIndex: 2,
-    });
-  } else if (variant === 'shorts-grid') {
-    Object.assign(dlButton.style, {
-      position: 'absolute',
-      top: '8px',
-      right: '8px',
-      zIndex: 2,
-    });
-  }
+  Object.assign(dlButton.style, videoButtonVariantStyles[variant] || {});
 
   let dlIcon = document.createElement('span');
   dlIcon.innerHTML = defaultIcon;
@@ -530,6 +565,22 @@ function buildVideoButton(titleContainer, options = {}) {
 }
 
 function getNearestLink(element) {
+  if (!element) return null;
+  if (element.matches(videoLinkSelector)) {
+    return element.getAttribute('href');
+  }
+
+  let closestLink = element.closest(videoLinkSelector);
+  if (closestLink) {
+    return closestLink.getAttribute('href');
+  }
+
+  let cardRoot = getVideoCardRoot(element);
+  let cardLink = cardRoot?.querySelector(videoLinkSelector);
+  if (cardLink) {
+    return cardLink.getAttribute('href');
+  }
+
   // Check siblings
   let sibling = element;
   while (sibling) {
