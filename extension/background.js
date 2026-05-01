@@ -213,24 +213,29 @@ let listenerEnabled = false;
 let isThrottled = false;
 
 async function handleContinuousCookie(checked) {
-  if (checked === true) {
-    browserType.cookies.onChanged.addListener(onCookieChange);
-    listenerEnabled = true;
-    console.log('Cookie listener enabled');
-  } else {
-    browserType.cookies.onChanged.removeListener(onCookieChange);
-    listenerEnabled = false;
-    console.log('Cookie listener disabled');
-  }
+  listenerEnabled = checked === true;
+  console.log(`Cookie listener ${listenerEnabled ? 'enabled' : 'disabled'}`);
 }
 
-function onCookieChange(changeInfo) {
+async function onCookieChange(changeInfo) {
+  let continuousSync = listenerEnabled;
+
+  if (!continuousSync) {
+    let data = await browserType.storage.local.get('continuousSync');
+    continuousSync = data?.continuousSync?.checked === true;
+    listenerEnabled = continuousSync;
+  }
+
+  if (!continuousSync) {
+    return;
+  }
+
   if (!isThrottled) {
     isThrottled = true;
 
     console.log('Cookie event detected:', changeInfo);
 
-    sendCookies();
+    await sendCookies();
 
     setTimeout(() => {
       isThrottled = false;
@@ -313,9 +318,4 @@ function handleMessage(request, sender, sendResponse) {
 }
 
 browserType.runtime.onMessage.addListener(handleMessage);
-
-browserType.runtime.onStartup.addListener(() => {
-  browserType.storage.local.get('continuousSync', data => {
-    handleContinuousCookie(data?.continuousSync?.checked || false);
-  });
-});
+browserType.cookies.onChanged.addListener(onCookieChange);

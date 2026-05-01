@@ -107,7 +107,7 @@ function getBrowser() {
 
 function getChannelContainers() {
   const elements = document.querySelectorAll(
-    '.page-header-view-model-wiz__page-header-flexible-actions, #owner'
+    'yt-flexible-actions-view-model.ytPageHeaderViewModelFlexibleActions, #owner'
   );
   const channelContainerNodes = [];
 
@@ -125,6 +125,22 @@ function isElementVisible(element) {
 }
 
 function ensureTALinks() {
+  let shortsContainer = getShortsContainer();
+  if (shortsContainer) {
+    if (shortsContainer.hasTA && !shortsContainer.querySelector('.ta-shorts-button')) {
+      shortsContainer.hasTA = false;
+    }
+    if (!shortsContainer.hasTA) {
+      let result = buildShortsButton();
+      if (result) {
+        let { wrapper, btn } = result;
+        shortsContainer.insertBefore(wrapper, shortsContainer.firstElementChild);
+        shortsContainer.hasTA = true;
+        checkVideoExists(btn);
+      }
+    }
+  }
+
   let channelContainerNodes = getChannelContainers();
 
   for (let channelContainer of channelContainerNodes) {
@@ -137,20 +153,29 @@ function ensureTALinks() {
 
   let titleContainerNodes = getTitleContainers();
   for (let titleContainer of titleContainerNodes) {
-    let parent = getNearestH3(titleContainer);
-    if (!parent) continue;
-    if (parent.hasTA) continue;
-    let videoButton = buildVideoButton(titleContainer);
+    let placement = getVideoButtonPlacement(titleContainer);
+    if (!placement || placement.container.hasTA) continue;
+
+    let videoButton = buildVideoButton(titleContainer, { variant: placement.variant });
     if (videoButton == null) continue;
-    processTitle(parent);
-    parent.appendChild(videoButton);
-    parent.hasTA = true;
+
+    prepareVideoButtonContainer(placement.container, videoButton);
+    if (placement.insertBefore) {
+      placement.container.insertBefore(videoButton, placement.insertBefore);
+    } else {
+      placement.container.appendChild(videoButton);
+    }
+    placement.container.hasTA = true;
   }
 }
 ensureTALinks = throttled(ensureTALinks, 700);
 
 function adjustOwner(channelContainer) {
-  return channelContainer.querySelector('#buttons') || channelContainer;
+  return (
+    channelContainer.querySelector('.ytFlexibleActionsViewModelActionRow') ||
+    channelContainer.querySelector('#buttons') ||
+    channelContainer
+  );
 }
 
 function buildChannelButton(channelContainer) {
@@ -234,6 +259,7 @@ function getChannelHandle(channelContainer) {
 function buildChannelButtonDiv() {
   let buttonDiv = document.createElement('div');
   buttonDiv.classList.add('ta-channel-button');
+  let isWatchPage = window.location.pathname.startsWith('/watch');
   Object.assign(buttonDiv.style, {
     display: 'flex',
     alignItems: 'center',
@@ -241,8 +267,8 @@ function buildChannelButtonDiv() {
     color: '#fff',
     fontSize: '14px',
     padding: '5px',
-    'margin-left': '8px',
     borderRadius: '18px',
+    marginLeft: isWatchPage ? '8px' : '0',
   });
   return buttonDiv;
 }
@@ -340,14 +366,26 @@ function buildChannelDownloadButton() {
 }
 
 function getTitleContainers() {
-  let elements = document.querySelectorAll('#video-title');
+  let elements = document.querySelectorAll(
+    [
+      '#video-title',
+      'a.ytLockupMetadataViewModelTitle',
+      'a[href^="/shorts/"]',
+    ].join(', ')
+  );
   let videoNodes = [];
+  let seen = new Set();
   elements.forEach(element => {
-    if (isElementVisible(element)) {
-      videoNodes.push(element);
-    }
+    if (!isElementVisible(element)) return;
+    if (!getVideoCardRoot(element)) return;
+
+    let videoId = getVideoId(element);
+    if (!videoId || seen.has(videoId)) return;
+
+    seen.add(videoId);
+    videoNodes.push(element);
   });
-  return elements;
+  return videoNodes;
 }
 
 function getVideoId(titleContainer) {
@@ -356,23 +394,83 @@ function getVideoId(titleContainer) {
   let href = getNearestLink(titleContainer);
   if (!href) return;
 
-  let videoId;
-  if (href.startsWith('/watch?v')) {
-    let params = new URLSearchParams(href);
-    videoId = params.get('/watch?v');
-  } else if (href.startsWith('/shorts/')) {
-    videoId = href.split('/')[2];
+  try {
+    let url = new URL(href, location.href);
+    if (url.pathname === '/watch') return url.searchParams.get('v') || undefined;
+    if (url.pathname.startsWith('/shorts/')) return url.pathname.split('/')[2] || undefined;
+  } catch {
+    // not a valid URL
   }
-  return videoId;
+  return undefined;
 }
 
-function buildVideoButton(titleContainer) {
+function getVideoCardRoot(titleContainer) {
+  return titleContainer?.closest(
+    [
+      'yt-lockup-view-model',
+      'yt-lockup-metadata-view-model',
+      'ytd-rich-grid-media',
+      'ytd-rich-item-renderer',
+      'ytd-video-renderer',
+      'ytd-compact-video-renderer',
+      'ytd-grid-video-renderer',
+      'ytd-playlist-video-renderer',
+    ].join(', ')
+  );
+}
+
+function isShortsCardTitle(titleContainer) {
+  let href = getNearestLink(titleContainer);
+  return Boolean(href?.startsWith('/shorts/'));
+}
+
+function getVideoButtonPlacement(titleContainer) {
+  if (titleContainer.classList.contains('ytLockupMetadataViewModelTitle')) {
+    let container = titleContainer.closest('yt-lockup-metadata-view-model');
+    if (!container) return null;
+    return {
+      container,
+      insertBefore: container.querySelector('.ytLockupMetadataViewModelMenuButton'),
+      variant: 'lockup',
+    };
+  }
+
+  if (isShortsCardTitle(titleContainer)) {
+    let container = getVideoCardRoot(titleContainer);
+    if (!container) return null;
+    return { container, variant: 'shorts-grid' };
+  }
+
+  let container = getTitleOverlayContainer(titleContainer);
+  if (!container) return null;
+  return { container, variant: 'default' };
+}
+
+function isUpcomingVideoCard(titleContainer) {
+  const cardRoot = getVideoCardRoot(titleContainer);
+  if (!cardRoot) return false;
+
+  // Unreleased premieres/upcoming videos expose a reminder toggle attachment.
+  return Boolean(
+    cardRoot.querySelector(
+      'lockup-attachments-view-model yt-flexible-actions-view-model toggle-button-view-model'
+    )
+  );
+}
+
+function buildVideoButton(titleContainer, options = {}) {
+  if (isUpcomingVideoCard(titleContainer)) return null;
+
   let videoId = getVideoId(titleContainer);
   if (!videoId) return;
+  let { variant } = options;
 
   const dlButton = document.createElement('a');
   dlButton.classList.add('ta-button');
   dlButton.href = '#';
+  dlButton.setAttribute('data-id', videoId);
+  dlButton.setAttribute('data-type', 'video');
+  dlButton.title = `TA download video: ${titleContainer.innerText} [${videoId}]`;
 
   Object.assign(dlButton.style, {
     display: 'flex',
@@ -387,6 +485,29 @@ function buildVideoButton(titleContainer) {
     height: 'fit-content',
     opacity: 0,
   });
+
+  if (variant === 'lockup') {
+    Object.assign(dlButton.style, {
+      position: 'absolute',
+      top: 0,
+      right: '32px',
+      zIndex: 2,
+    });
+  } else if (variant === 'default') {
+    Object.assign(dlButton.style, {
+      position: 'absolute',
+      top: 0,
+      right: '32px',
+      zIndex: 2,
+    });
+  } else if (variant === 'shorts-grid') {
+    Object.assign(dlButton.style, {
+      position: 'absolute',
+      top: '8px',
+      right: '8px',
+      zIndex: 2,
+    });
+  }
 
   let dlIcon = document.createElement('span');
   dlIcon.innerHTML = defaultIcon;
@@ -436,37 +557,43 @@ function getNearestLink(element) {
   return null;
 }
 
-function getNearestH3(element) {
+function getTitleOverlayContainer(titleContainer) {
+  let titleWrapper = titleContainer?.closest('#title-wrapper');
+  if (titleWrapper) return titleWrapper;
+
+  let element = titleContainer;
   for (let i = 0; i < 5 && element && element !== document; i++) {
     if (element.tagName === 'H3') {
       return element;
     }
     element = element.parentNode;
   }
+
+  let parent = titleContainer?.parentElement;
+  if (parent && parent.tagName !== 'A') return parent;
+
+  parent = titleContainer?.parentElement?.parentElement;
+  if (parent && parent.tagName !== 'A') return parent;
+
   return null;
 }
 
-function processTitle(titleContainer) {
-  if (titleContainer.hasListener) return;
-  Object.assign(titleContainer.style, {
-    display: 'flex',
-    gap: '15px',
-  });
+function prepareVideoButtonContainer(container, taButton) {
+  if (!container.style.position) {
+    container.style.position = 'relative';
+  }
+  if (container.hasListener) return;
 
-  titleContainer.classList.add('title-container');
-  titleContainer.addEventListener('mouseenter', () => {
-    const taButton = titleContainer.querySelector('.ta-button');
-    if (!taButton) return;
+  container.classList.add('title-container');
+  container.addEventListener('mouseenter', () => {
     if (!taButton.isChecked) checkVideoExists(taButton);
     taButton.style.opacity = 1;
   });
 
-  titleContainer.addEventListener('mouseleave', () => {
-    const taButton = titleContainer.querySelector('.ta-button');
-    if (!taButton) return;
+  container.addEventListener('mouseleave', () => {
     taButton.style.opacity = 0;
   });
-  titleContainer.hasListener = true;
+  container.hasListener = true;
 }
 
 function checkVideoExists(taButton) {
@@ -504,6 +631,69 @@ function checkVideoExists(taButton) {
   let message = { type: 'videoExists', videoId };
   let sending = sendMessage(message);
   sending.then(handleResponse, handleError);
+}
+
+function getShortsContainer() {
+  if (!window.location.pathname.startsWith('/shorts/')) return null;
+  return document.querySelector('reel-action-bar-view-model');
+}
+
+function buildShortsButton() {
+  let videoId = window.location.pathname.split('/')[2];
+  if (!videoId) return null;
+
+  let wrapper = document.createElement('div');
+  wrapper.classList.add('ta-shorts-button');
+  Object.assign(wrapper.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    marginBottom: '4px',
+  });
+
+  let btn = document.createElement('button');
+  btn.setAttribute('data-id', videoId);
+  btn.setAttribute('data-type', 'video');
+  btn.title = `TA download: ${videoId}`;
+  Object.assign(btn.style, {
+    width: '48px',
+    height: '48px',
+    borderRadius: '50%',
+    border: 'none',
+    backgroundColor: '#00202f',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  });
+
+  let iconSpan = document.createElement('span');
+  iconSpan.innerHTML = downloadIcon;
+  Object.assign(iconSpan.style, {
+    filter: 'invert()',
+    width: '24px',
+    height: '24px',
+    display: 'flex',
+  });
+  btn.appendChild(iconSpan);
+
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    sendDownload(btn);
+    e.stopPropagation();
+  });
+
+  let label = document.createElement('div');
+  label.innerText = 'TA';
+  label.style.setProperty('color', 'white', 'important');
+  label.style.fontSize = '12px';
+  label.style.fontWeight = '500';
+
+  wrapper.appendChild(btn);
+  wrapper.appendChild(label);
+
+  return { wrapper, btn };
 }
 
 function sendDownload(button) {
@@ -568,7 +758,14 @@ function sendUrl(url, action, button) {
 }
 
 async function sendMessage(message) {
-  let { success, value } = await browserType.runtime.sendMessage(message);
+  let response;
+  try {
+    response = await browserType.runtime.sendMessage(message);
+  } catch (e) {
+    if (e?.message?.includes('Extension context invalidated')) return;
+    throw e;
+  }
+  let { success, value } = response;
   if (!success) {
     throw value;
   }
@@ -583,6 +780,10 @@ function cleanButtons() {
   });
   document.querySelectorAll('.ta-channel-button').forEach(button => {
     button.parentElement.hasTA = false;
+    button.remove();
+  });
+  document.querySelectorAll('.ta-shorts-button').forEach(button => {
+    if (button.parentElement) button.parentElement.hasTA = false;
     button.remove();
   });
 }
