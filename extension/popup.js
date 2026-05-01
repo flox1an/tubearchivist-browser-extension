@@ -93,6 +93,16 @@ document.getElementById('autostart').addEventListener('click', function () {
   toggleAutostart();
 });
 
+// auto queue watched videos
+document.getElementById('watch-auto-queue').addEventListener('click', function () {
+  toggleWatchAutoQueue();
+});
+
+// auto queue liked videos
+document.getElementById('like-auto-queue').addEventListener('click', function () {
+  toggleLikeAutoQueue();
+});
+
 let fullUrlInput = document.getElementById('full-url');
 fullUrlInput.addEventListener('change', () => {
   browserType.storage.local.set({
@@ -166,6 +176,30 @@ function toggleAutostart() {
   let checked = document.getElementById('autostart').checked;
   let toStore = {
     autostart: {
+      checked: checked,
+    },
+  };
+  browserType.storage.local.set(toStore, function () {
+    console.log('stored option: ' + JSON.stringify(toStore));
+  });
+}
+
+function toggleWatchAutoQueue() {
+  let checked = document.getElementById('watch-auto-queue').checked;
+  let toStore = {
+    watchAutoQueue: {
+      checked: checked,
+    },
+  };
+  browserType.storage.local.set(toStore, function () {
+    console.log('stored option: ' + JSON.stringify(toStore));
+  });
+}
+
+function toggleLikeAutoQueue() {
+  let checked = document.getElementById('like-auto-queue').checked;
+  let toStore = {
+    likeAutoQueue: {
       checked: checked,
     },
   };
@@ -283,6 +317,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('autostart').checked = true;
   }
 
+  async function setWatchAutoQueueOption(result) {
+    console.log(result);
+    if (!result.watchAutoQueue || result.watchAutoQueue.checked === false) {
+      console.log('watch auto queue not set');
+      return;
+    }
+    console.log('set options: ' + JSON.stringify(result));
+    document.getElementById('watch-auto-queue').checked = true;
+  }
+
+  async function setLikeAutoQueueOption(result) {
+    console.log(result);
+    if (!result.likeAutoQueue || result.likeAutoQueue.checked === false) {
+      console.log('like auto queue not set');
+      return;
+    }
+    console.log('set options: ' + JSON.stringify(result));
+    document.getElementById('like-auto-queue').checked = true;
+  }
+
   browserType.storage.local.get(['access', 'popupFullUrl', 'popupApiKey'], function (result) {
     onGot(result);
   });
@@ -293,5 +347,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   browserType.storage.local.get('autostart', function (result) {
     setAutostartOption(result);
+  });
+
+  browserType.storage.local.get('watchAutoQueue', function (result) {
+    setWatchAutoQueueOption(result);
+  });
+
+  browserType.storage.local.get('likeAutoQueue', function (result) {
+    setLikeAutoQueueOption(result);
   });
 });

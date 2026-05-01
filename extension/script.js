@@ -88,6 +88,26 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
 const defaultIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>minus-thick</title><path d="M20 14H4V10H20" /></svg>`;
 
 let browserType = getBrowser();
+const watchAutoQueueRatioThreshold = 0.2;
+const watchAutoQueueMinSeconds = 60;
+const watchAutoQueueMaxSeconds = 600;
+const watchAutoQueueShortRatioThreshold = 0.8;
+const watchAutoQueuePollMs = 1000;
+const watchAutoQueueMaxDeltaSeconds = 2;
+const watchAutoQueueRetryCooldownMs = 30000;
+let watchAutoQueueEnabled = false;
+let likeAutoQueueEnabled = false;
+let watchProgressState = null;
+let watchProgressPlayer = null;
+let likeQueueState = null;
+const shortsLinkSelector = 'a[href^="/shorts/"], a[href*="youtube.com/shorts/"]';
+const shortsVideoContainerSelector = [
+  'ytd-reel-video-renderer',
+  'ytd-reel-player-overlay-renderer',
+  'reel-action-bar-view-model',
+  'ytd-shorts',
+  'ytd-player',
+].join(', ');
 
 const titleContainerSelector = [
   '#video-title',
@@ -163,6 +183,431 @@ function getChannelContainers() {
   });
 
   return channelContainerNodes;
+}
+
+async function loadWatchAutoQueuePreference() {
+  try {
+    let stored = await browserType.storage.local.get('watchAutoQueue');
+    watchAutoQueueEnabled = stored?.watchAutoQueue?.checked === true;
+  } catch (error) {
+    console.error('failed to load watch auto queue preference', error);
+  }
+}
+
+async function loadLikeAutoQueuePreference() {
+  try {
+    let stored = await browserType.storage.local.get('likeAutoQueue');
+    likeAutoQueueEnabled = stored?.likeAutoQueue?.checked === true;
+  } catch (error) {
+    console.error('failed to load like auto queue preference', error);
+  }
+}
+
+function resetWatchProgressState(videoId = null) {
+  watchProgressState = {
+    videoId,
+    watchedSeconds: 0,
+    queued: false,
+    queueAttemptInFlight: false,
+    lastQueueAttemptAt: 0,
+    lastCurrentTime: null,
+    lastTickAt: null,
+    lastLoggedBucket: -1,
+  };
+}
+
+function resetLikeQueueState(videoId = null) {
+  likeQueueState = {
+    videoId,
+    queued: false,
+    queueAttemptInFlight: false,
+    lastQueueAttemptAt: 0,
+    lastLiked: false,
+  };
+}
+
+function parseShortsVideoIdFromHref(href) {
+  if (!href) return null;
+  try {
+    const url = new URL(href, window.location.href);
+    if (!url.pathname.startsWith('/shorts/')) return null;
+    return url.pathname.split('/')[2] || null;
+  } catch {
+    return null;
+  }
+}
+
+function getElementViewportIntersectionArea(element) {
+  if (!element) return 0;
+  const rect = element.getBoundingClientRect();
+  const width = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0));
+  const height = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
+  return width * height;
+}
+
+function getVideoIdFromShortsContext(element) {
+  if (!element) return null;
+
+  let container = element.closest(shortsVideoContainerSelector);
+  while (container) {
+    let directLink = container.matches(shortsLinkSelector)
+      ? container
+      : container.querySelector(shortsLinkSelector);
+    let videoId = parseShortsVideoIdFromHref(directLink?.getAttribute('href'));
+    if (videoId) return videoId;
+
+    container = container.parentElement?.closest(shortsVideoContainerSelector) || null;
+  }
+
+  let nearbyLink = element.closest(shortsLinkSelector);
+  return parseShortsVideoIdFromHref(nearbyLink?.getAttribute('href'));
+}
+
+function getShortsVideoIdFromViewport() {
+  const points = [
+    [window.innerWidth / 2, window.innerHeight / 2],
+    [window.innerWidth / 2, window.innerHeight * 0.65],
+    [window.innerWidth / 2, window.innerHeight * 0.35],
+  ];
+
+  for (let [x, y] of points) {
+    for (let element of document.elementsFromPoint(x, y)) {
+      let videoId = getVideoIdFromShortsContext(element);
+      if (videoId) return videoId;
+    }
+  }
+
+  return null;
+}
+
+function getShortsVideoIdFromVisibleLinks() {
+  let bestCandidate = null;
+  let bestArea = 0;
+
+  for (let link of document.querySelectorAll(shortsLinkSelector)) {
+    let videoId = parseShortsVideoIdFromHref(link.getAttribute('href'));
+    if (!videoId) continue;
+
+    let area = getElementViewportIntersectionArea(link);
+    if (area > bestArea) {
+      bestArea = area;
+      bestCandidate = videoId;
+    }
+  }
+
+  return bestCandidate;
+}
+
+function getShortsPlaybackContainerFromViewport() {
+  const points = [
+    [window.innerWidth / 2, window.innerHeight / 2],
+    [window.innerWidth / 2, window.innerHeight * 0.65],
+    [window.innerWidth / 2, window.innerHeight * 0.35],
+  ];
+
+  for (let [x, y] of points) {
+    for (let element of document.elementsFromPoint(x, y)) {
+      let container = element.closest('ytd-reel-video-renderer, ytd-reel-player-overlay-renderer');
+      if (container) return container;
+    }
+  }
+
+  return null;
+}
+
+function getPlaybackPlayer() {
+  const players = [...document.querySelectorAll('video.html5-main-video, ytd-player video, video')];
+  if (players.length <= 1) return players[0] || null;
+
+  players.sort((left, right) => {
+    const playingScore = Number(!right.paused) - Number(!left.paused);
+    if (playingScore !== 0) return playingScore;
+
+    return getElementViewportIntersectionArea(right) - getElementViewportIntersectionArea(left);
+  });
+
+  return players[0] || null;
+}
+
+function getCurrentPlaybackContainer() {
+  let player = getPlaybackPlayer();
+  if (window.location.pathname.startsWith('/shorts/')) {
+    return (
+      getShortsPlaybackContainerFromViewport() ||
+      player?.closest('ytd-reel-video-renderer, ytd-reel-player-overlay-renderer, ytd-shorts') ||
+      null
+    );
+  }
+
+  return player?.closest('ytd-watch-flexy, ytd-player, #columns, #primary, body') || null;
+}
+
+function getCurrentPlaybackVideoId() {
+  if (window.location.pathname === '/watch') {
+    return new URLSearchParams(window.location.search).get('v');
+  }
+
+  if (window.location.pathname.startsWith('/shorts/')) {
+    let player = getPlaybackPlayer();
+    let videoId =
+      getVideoIdFromShortsContext(player) ||
+      getShortsVideoIdFromViewport() ||
+      getShortsVideoIdFromVisibleLinks();
+    return videoId || window.location.pathname.split('/')[2] || null;
+  }
+
+  return null;
+}
+
+function isAdShowing() {
+  return Boolean(document.querySelector('.html5-video-player.ad-showing'));
+}
+
+function getWatchAutoQueueTargetSeconds(duration) {
+  if (duration <= watchAutoQueueMinSeconds) {
+    return duration * watchAutoQueueShortRatioThreshold;
+  }
+
+  return Math.min(
+    Math.max(duration * watchAutoQueueRatioThreshold, watchAutoQueueMinSeconds),
+    watchAutoQueueMaxSeconds
+  );
+}
+
+function logWatchProgress(message, metadata = {}) {
+  console.log('[TA auto queue]', message, metadata);
+}
+
+async function maybeAutoQueueVideo(videoId, state, reason) {
+  if (!videoId || !state || state.queueAttemptInFlight) return false;
+  if (Date.now() - state.lastQueueAttemptAt < watchAutoQueueRetryCooldownMs) return false;
+
+  state.queueAttemptInFlight = true;
+  state.lastQueueAttemptAt = Date.now();
+  logWatchProgress('queue attempt starting', { videoId, reason });
+  try {
+    let existingVideoUrl = await sendMessage({ type: 'videoExists', videoId });
+    if (existingVideoUrl !== false) {
+      logWatchProgress('queue skipped because video already exists in TA', { videoId, reason });
+      state.queued = true;
+      return true;
+    }
+
+    await sendMessage({ type: 'download', url: videoId });
+    logWatchProgress('queue request sent successfully', { videoId, reason });
+    state.queued = true;
+    return true;
+  } catch (error) {
+    console.error('[TA auto queue] queue request failed', { videoId, reason, error });
+  } finally {
+    if (state?.videoId === videoId) {
+      state.queueAttemptInFlight = false;
+    }
+  }
+  return false;
+}
+
+async function maybeAutoQueueWatchedVideo(videoId) {
+  return maybeAutoQueueVideo(videoId, watchProgressState, 'watched');
+}
+
+function trackWatchProgress() {
+  if (!watchAutoQueueEnabled) return;
+
+  let videoId = getCurrentPlaybackVideoId();
+  if (!videoId) {
+    resetWatchProgressState();
+    return;
+  }
+
+  if (!watchProgressState || watchProgressState.videoId !== videoId) {
+    resetWatchProgressState(videoId);
+    logWatchProgress('tracking started', { videoId, pathname: window.location.pathname });
+  }
+
+  let player = getPlaybackPlayer();
+  if (!player || !Number.isFinite(player.duration) || player.duration <= 0 || isAdShowing()) {
+    if (!player) {
+      logWatchProgress('waiting for player element', { videoId });
+    }
+    watchProgressState.lastCurrentTime = null;
+    watchProgressState.lastTickAt = Date.now();
+    return;
+  }
+
+  const now = Date.now();
+  const currentTime = player.currentTime;
+  const duration = player.duration;
+  const lastCurrentTime = watchProgressState.lastCurrentTime;
+  const lastTickAt = watchProgressState.lastTickAt;
+
+  if (!player.paused && lastCurrentTime != null && lastTickAt != null) {
+    let deltaSeconds = currentTime - lastCurrentTime;
+    let elapsedSeconds = (now - lastTickAt) / 1000;
+    if (
+      deltaSeconds > 0 &&
+      deltaSeconds <= watchAutoQueueMaxDeltaSeconds &&
+      deltaSeconds <= elapsedSeconds + 0.5
+    ) {
+      watchProgressState.watchedSeconds += deltaSeconds;
+    }
+  }
+
+  watchProgressState.lastCurrentTime = currentTime;
+  watchProgressState.lastTickAt = now;
+
+  if (watchProgressState.queued) return;
+
+  let targetSeconds = getWatchAutoQueueTargetSeconds(duration);
+  let progressBucket = Math.floor(watchProgressState.watchedSeconds / 15);
+  if (progressBucket > watchProgressState.lastLoggedBucket) {
+    watchProgressState.lastLoggedBucket = progressBucket;
+    logWatchProgress('progress update', {
+      videoId,
+      watchedSeconds: Math.round(watchProgressState.watchedSeconds),
+      targetSeconds: Math.round(targetSeconds),
+      duration: Math.round(duration),
+    });
+  }
+
+  if (watchProgressState.watchedSeconds >= targetSeconds) {
+    logWatchProgress('watch threshold reached', {
+      videoId,
+      watchedSeconds: Math.round(watchProgressState.watchedSeconds),
+      targetSeconds: Math.round(targetSeconds),
+    });
+    maybeAutoQueueWatchedVideo(videoId);
+  }
+}
+
+function handlePlaybackEvent() {
+  trackWatchProgress();
+  trackLikedVideoState();
+}
+
+function detachWatchProgressListeners() {
+  if (!watchProgressPlayer) return;
+
+  watchProgressPlayer.removeEventListener('timeupdate', handlePlaybackEvent);
+  watchProgressPlayer.removeEventListener('play', handlePlaybackEvent);
+  watchProgressPlayer.removeEventListener('playing', handlePlaybackEvent);
+  watchProgressPlayer.removeEventListener('pause', handlePlaybackEvent);
+  watchProgressPlayer.removeEventListener('loadedmetadata', handlePlaybackEvent);
+  watchProgressPlayer.removeEventListener('durationchange', handlePlaybackEvent);
+  watchProgressPlayer.removeEventListener('seeking', handlePlaybackEvent);
+  watchProgressPlayer.removeEventListener('seeked', handlePlaybackEvent);
+  watchProgressPlayer = null;
+}
+
+function attachWatchProgressListeners() {
+  let player = getPlaybackPlayer();
+  if (player === watchProgressPlayer) return;
+
+  detachWatchProgressListeners();
+  if (!player) return;
+
+  watchProgressPlayer = player;
+  player.addEventListener('timeupdate', handlePlaybackEvent);
+  player.addEventListener('play', handlePlaybackEvent);
+  player.addEventListener('playing', handlePlaybackEvent);
+  player.addEventListener('pause', handlePlaybackEvent);
+  player.addEventListener('loadedmetadata', handlePlaybackEvent);
+  player.addEventListener('durationchange', handlePlaybackEvent);
+  player.addEventListener('seeking', handlePlaybackEvent);
+  player.addEventListener('seeked', handlePlaybackEvent);
+}
+
+function getLikeButtons() {
+  return [
+    ...document.querySelectorAll(
+      [
+        'like-button-view-model button[aria-pressed]',
+        'segmented-like-dislike-button-view-model button[aria-pressed]',
+        'ytd-toggle-button-renderer button[aria-pressed]',
+        'toggle-button-view-model button[aria-pressed]',
+        'like-button-view-model button',
+        'segmented-like-dislike-button-view-model button',
+      ].join(', ')
+    ),
+  ];
+}
+
+function isLikeButton(button) {
+  if (!button) return false;
+  let label = [
+    button.getAttribute('aria-label'),
+    button.getAttribute('title'),
+    button.textContent,
+    button.closest('[aria-label]')?.getAttribute('aria-label'),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return label.includes('like') || label.includes('mag ich') || label.includes('gefällt');
+}
+
+function getCurrentLikeButton() {
+  let playbackContainer = getCurrentPlaybackContainer();
+  if (playbackContainer) {
+    let buttonInPlaybackContainer = [...playbackContainer.querySelectorAll('button')].find(button =>
+      isLikeButton(button)
+    );
+    if (buttonInPlaybackContainer) return buttonInPlaybackContainer;
+  }
+
+  let videoId = getCurrentPlaybackVideoId();
+  if (window.location.pathname.startsWith('/shorts/') && videoId) {
+    let matchingShortsContainer = [...document.querySelectorAll('ytd-reel-video-renderer')].find(container => {
+      let link = container.querySelector(shortsLinkSelector);
+      return parseShortsVideoIdFromHref(link?.getAttribute('href')) === videoId;
+    });
+    let buttonInMatchingShortsContainer = [...(matchingShortsContainer?.querySelectorAll('button') || [])].find(
+      button => isLikeButton(button)
+    );
+    if (buttonInMatchingShortsContainer) return buttonInMatchingShortsContainer;
+  }
+
+  let visibleLikeButtons = getLikeButtons()
+    .filter(button => isLikeButton(button))
+    .map(button => ({ button, area: getElementViewportIntersectionArea(button) }))
+    .filter(item => item.area > 0)
+    .sort((left, right) => right.area - left.area);
+
+  return visibleLikeButtons[0]?.button || null;
+}
+
+function isVideoLiked(button) {
+  return button?.getAttribute('aria-pressed') === 'true';
+}
+
+function trackLikedVideoState() {
+  if (!likeAutoQueueEnabled) return;
+
+  let videoId = getCurrentPlaybackVideoId();
+  if (!videoId) {
+    resetLikeQueueState();
+    return;
+  }
+
+  if (!likeQueueState || likeQueueState.videoId !== videoId) {
+    resetLikeQueueState(videoId);
+    logWatchProgress('like tracking started', { videoId, pathname: window.location.pathname });
+  }
+
+  let likeButton = getCurrentLikeButton();
+  if (!likeButton) {
+    logWatchProgress('waiting for like button', { videoId });
+    return;
+  }
+
+  let liked = isVideoLiked(likeButton);
+  if (liked && !likeQueueState.lastLiked && !likeQueueState.queued) {
+    logWatchProgress('like detected', { videoId });
+    maybeAutoQueueVideo(videoId, likeQueueState, 'liked');
+  }
+
+  likeQueueState.lastLiked = liked;
 }
 
 function isElementVisible(element) {
@@ -855,15 +1300,70 @@ function throttled(callback, time) {
   };
 }
 
+const handleLikeButtonClick = throttled(() => {
+  window.setTimeout(trackLikedVideoState, 50);
+  window.setTimeout(trackLikedVideoState, 250);
+}, 200);
+
 let observer = new MutationObserver(list => {
   const currentHref = document.location.href;
   if (currentHref !== oldHref) {
     cleanButtons();
     oldHref = currentHref;
+    resetWatchProgressState(getCurrentPlaybackVideoId());
+    resetLikeQueueState(getCurrentPlaybackVideoId());
+    attachWatchProgressListeners();
   }
   if (list.some(i => i.type === 'childList' && i.addedNodes.length > 0)) {
     ensureTALinks();
+    attachWatchProgressListeners();
+    trackLikedVideoState();
   }
 });
 
 observer.observe(document.body, { attributes: false, childList: true, subtree: true });
+document.addEventListener(
+  'click',
+  event => {
+    let button = event.target?.closest?.('button');
+    if (!button || !isLikeButton(button)) return;
+    handleLikeButtonClick();
+  },
+  true
+);
+
+browserType.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return;
+
+  if (changes.watchAutoQueue) {
+    watchAutoQueueEnabled = changes.watchAutoQueue.newValue?.checked === true;
+    if (!watchAutoQueueEnabled) {
+      resetWatchProgressState(getCurrentPlaybackVideoId());
+      detachWatchProgressListeners();
+    } else {
+      attachWatchProgressListeners();
+      trackWatchProgress();
+    }
+  }
+
+  if (changes.likeAutoQueue) {
+    likeAutoQueueEnabled = changes.likeAutoQueue.newValue?.checked === true;
+    if (!likeAutoQueueEnabled) {
+      resetLikeQueueState(getCurrentPlaybackVideoId());
+    } else {
+      trackLikedVideoState();
+    }
+  }
+});
+
+Promise.all([loadWatchAutoQueuePreference(), loadLikeAutoQueuePreference()]).then(() => {
+  logWatchProgress('preferences loaded', {
+    watchAutoQueueEnabled,
+    likeAutoQueueEnabled,
+  });
+  resetWatchProgressState(getCurrentPlaybackVideoId());
+  resetLikeQueueState(getCurrentPlaybackVideoId());
+  attachWatchProgressListeners();
+  window.setInterval(trackWatchProgress, watchAutoQueuePollMs);
+  window.setInterval(trackLikedVideoState, watchAutoQueuePollMs);
+});

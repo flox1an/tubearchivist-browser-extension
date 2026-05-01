@@ -12,6 +12,7 @@ This is a browser extension to bridge YouTube with [Tube Archivist](https://gith
 - On YouTube video pages, inject a download button to download that video and a subscribe button to subscribe to that channel.
 - On YouTube channel pages, inject a button to subscribe to the channel or download the complete channel. Regarding the channel subpages, this follows the same rules as adding to the queue over the form.
 - Throughout most places, hover over the video title to reveal a download button for that video.
+- Optionally auto queue a watched video after you have naturally watched enough of it on a YouTube watch page or Shorts page.
 - Sync your cookies for yt-dlp.
 
 ## Screenshots
@@ -54,6 +55,8 @@ A green checkmark will appear next to the *Save* button if your connection is wo
 - **Copy Now**: Copy the cookie now to TA.
 - **Show Cookie**: Show the cookie on click, for copy paste. 
 - **Autostart**: Autostart and prioritize videos send from this extension.
+- **Auto Queue Watched Videos**: On YouTube `/watch` and `/shorts/` pages, queue the current video once watched time reaches `min(max(20% of duration, 60s), 10m)`. Videos shorter than 60 seconds use an 80% watched threshold instead. Large seek jumps and ad playback are not counted.
+- **Auto Queue Liked Videos**: On YouTube `/watch` and `/shorts/` pages, queue the current horizontal or vertical video when you press Like. The video is checked against Tube Archivist first so existing entries are not queued again.
 
 ## Test this extension
 Before continuing loading the temporary extension here, make sure to deactivate/delete the main extension first.
