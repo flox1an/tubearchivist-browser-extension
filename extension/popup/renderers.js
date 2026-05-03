@@ -3,26 +3,34 @@ export function createRenderers({
   formatDuration,
   formatPublished,
   createMetaText,
+  resolveThumbnailSrc,
 }) {
   function createThumb(item) {
     let thumb = document.createElement('div');
     thumb.className = 'item-thumb';
 
-    let thumbSrc = item.youtube_id
-      ? `https://i.ytimg.com/vi/${encodeURIComponent(item.youtube_id)}/mqdefault.jpg`
-      : null;
-    if (!thumbSrc && item.vid_thumb_url) {
-      thumbSrc = item.ta_base_url
-        ? new URL(item.vid_thumb_url, item.ta_base_url).href
-        : item.vid_thumb_url;
-    }
+    if (!item.vid_thumb_url) return thumb;
 
-    if (thumbSrc) {
-      let image = document.createElement('img');
-      image.src = thumbSrc;
-      image.alt = '';
-      image.loading = 'lazy';
-      thumb.appendChild(image);
+    let image = document.createElement('img');
+    image.alt = '';
+    image.loading = 'lazy';
+    thumb.appendChild(image);
+
+    let fallbackSrc = item.ta_base_url
+      ? new URL(item.vid_thumb_url, item.ta_base_url).href
+      : item.vid_thumb_url;
+    image.src = fallbackSrc;
+
+    if (resolveThumbnailSrc) {
+      resolveThumbnailSrc(item)
+        .then(resolvedSrc => {
+          if (resolvedSrc) {
+            image.src = resolvedSrc;
+          }
+        })
+        .catch(() => {
+          // Keep fallback src when proxying fails.
+        });
     }
 
     return thumb;
@@ -110,4 +118,3 @@ export function createRenderers({
     renderArchiveItem,
   };
 }
-

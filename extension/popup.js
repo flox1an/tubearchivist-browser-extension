@@ -74,6 +74,33 @@ let archiveSortBy = 'downloaded';
 let archiveSortOrderValue = 'desc';
 let archiveTypeValue = '';
 let activePanelId = 'downloads-panel';
+const thumbnailDataUrlCache = new Map();
+
+function thumbnailCacheKey(item) {
+  let base = item?.ta_base_url || '';
+  let thumb = item?.vid_thumb_url || '';
+  return `${base}|${thumb}`;
+}
+
+async function resolveThumbnailSrc(item) {
+  if (!item?.vid_thumb_url) return null;
+
+  let cacheKey = thumbnailCacheKey(item);
+  if (thumbnailDataUrlCache.has(cacheKey)) {
+    return thumbnailDataUrlCache.get(cacheKey);
+  }
+
+  let payload = await sendMessage({
+    type: 'getThumbnailBytes',
+    thumbPath: item.vid_thumb_url,
+  });
+  if (!payload?.base64) return null;
+
+  let contentType = payload.contentType || 'image/jpeg';
+  let dataUrl = `data:${contentType};base64,${payload.base64}`;
+  thumbnailDataUrlCache.set(cacheKey, dataUrl);
+  return dataUrl;
+}
 
 function setExtensionVersion() {
   extensionVersion.textContent = `v${browserType.runtime.getManifest().version}`;
@@ -116,6 +143,7 @@ const { renderArchiveItem, renderDownloadItem } = createRenderers({
   formatDuration,
   formatPublished,
   createMetaText,
+  resolveThumbnailSrc,
 });
 
 async function loadDownloadsStats() {
@@ -386,8 +414,20 @@ for (let input of [fullUrlInput, apiKeyInput]) {
     scheduleConnectionAutosave();
   });
 
-  input.addEventListener('blur', async () => {
-    await commitConnectionSettings();
+  input.addEventListener('blur', async event => {
+    let nextFocused = event.relatedTarget;
+    if (nextFocused === fullUrlInput || nextFocused === apiKeyInput) {
+      return;
+    }
+
+    // Fallback for browsers that don't reliably set relatedTarget on blur.
+    window.setTimeout(async () => {
+      let active = document.activeElement;
+      if (active === fullUrlInput || active === apiKeyInput) {
+        return;
+      }
+      await commitConnectionSettings();
+    }, 0);
   });
 }
 
@@ -479,6 +519,7 @@ const downloadsPager = createPagedList({
   renderItem: renderDownloadItem,
   sendMessage,
   setBadge,
+  emptyEndMessage: 'Nothing to download.',
 });
 
 const archivePager = createPagedList({

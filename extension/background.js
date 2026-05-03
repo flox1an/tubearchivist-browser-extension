@@ -30,6 +30,7 @@ async function sendGet(path) {
 
   const rawResponse = await fetch(url, {
     method: 'GET',
+    credentials: 'omit',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -51,6 +52,7 @@ async function sendData(path, payload, method) {
   try {
     const rawResponse = await fetch(url, {
       method: method,
+      credentials: 'omit',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
@@ -164,6 +166,87 @@ async function getDownloadHistStats() {
 
 async function getDownloadStats() {
   return await sendGet('api/stats/download/');
+}
+
+function arrayBufferToBase64(arrayBuffer) {
+  let bytes = new Uint8Array(arrayBuffer);
+  let chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    let slice = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...slice);
+  }
+  return btoa(binary);
+}
+
+const thumbnailResizeWidth = 160;
+const thumbnailResizeQuality = 0.7;
+const thumbnailResizedCache = new Map();
+
+async function resizeImageToWebpDataUrl(arrayBuffer) {
+  let sourceBlob = new Blob([arrayBuffer]);
+  let bitmap = await createImageBitmap(sourceBlob);
+
+  let sourceWidth = bitmap.width || thumbnailResizeWidth;
+  let sourceHeight = bitmap.height || Math.round((sourceWidth * 9) / 16);
+  let targetWidth = Math.min(thumbnailResizeWidth, sourceWidth);
+  let targetHeight = Math.max(1, Math.round((sourceHeight * targetWidth) / sourceWidth));
+
+  let canvas = new OffscreenCanvas(targetWidth, targetHeight);
+  let ctx = canvas.getContext('2d', { alpha: false });
+  ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+  bitmap.close();
+
+  let webpBlob = await canvas.convertToBlob({
+    type: 'image/webp',
+    quality: thumbnailResizeQuality,
+  });
+  let webpBuffer = await webpBlob.arrayBuffer();
+  let base64 = arrayBufferToBase64(webpBuffer);
+  return {
+    contentType: 'image/webp',
+    base64,
+  };
+}
+
+async function getThumbnailBytes(thumbPath) {
+  if (!thumbPath) return null;
+
+  let access = await getAccess();
+  let baseUrl = `${access.url}:${access.port}/`;
+  let thumbUrl = new URL(thumbPath, baseUrl).href;
+  if (thumbnailResizedCache.has(thumbUrl)) {
+    return thumbnailResizedCache.get(thumbUrl);
+  }
+
+  let response = await fetch(thumbUrl, {
+    method: 'GET',
+    credentials: 'omit',
+    headers: {
+      Authorization: 'Token ' + access.apiKey,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Thumbnail request failed (${response.status})`);
+  }
+
+  let buffer = await response.arrayBuffer();
+  try {
+    let resized = await resizeImageToWebpDataUrl(buffer);
+    thumbnailResizedCache.set(thumbUrl, resized);
+    return resized;
+  } catch (error) {
+    console.log('thumbnail resize failed, falling back to original', error);
+    let contentType = response.headers.get('content-type') || 'image/jpeg';
+    let base64 = arrayBufferToBase64(buffer);
+    let originalPayload = {
+      contentType,
+      base64,
+    };
+    thumbnailResizedCache.set(thumbUrl, originalPayload);
+    return originalPayload;
+  }
 }
 
 async function attachBaseUrl(response) {
@@ -350,6 +433,7 @@ type Message =
   | { type: 'getArchiveVideosPage', page: number, query?: string, sort?: string, order?: string, videoType?: string }
   | { type: 'getDownloadHistStats' }
   | { type: 'getDownloadStats' }
+  | { type: 'getThumbnailBytes', thumbPath: string }
   | { type: 'continuousSync', checked: boolean }
   | { type: 'download', url: string }
   | { type: 'subscribe', url: string }
@@ -394,6 +478,9 @@ function handleMessage(request, sender, sendResponse) {
       }
       case 'getDownloadStats': {
         return await getDownloadStats();
+      }
+      case 'getThumbnailBytes': {
+        return await getThumbnailBytes(request.thumbPath);
       }
       case 'continuousSync': {
         return await handleContinuousCookie(request.checked);

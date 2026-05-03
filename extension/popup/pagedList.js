@@ -11,6 +11,7 @@ export function createPagedList({
   setBadge,
   itemFilter = null,
   buildRequest = null,
+  emptyEndMessage = 'End of list.',
 }) {
   let state = {
     nextPage: 1,
@@ -79,7 +80,7 @@ export function createPagedList({
       } else if (state.hasMore) {
         setListState('Scroll for more.', 'idle');
       } else {
-        setListState('End of list.', 'success');
+        setListState(emptyEndMessage, 'success');
       }
     } catch (error) {
       if (state.totalLoaded > 0 && error === 'Not found.') {
@@ -109,4 +110,3 @@ export function createPagedList({
     },
   };
 }
-

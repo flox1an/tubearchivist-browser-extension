@@ -86,6 +86,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
 </svg>`;
 
 const defaultIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>minus-thick</title><path d="M20 14H4V10H20" /></svg>`;
+const queuedIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>clock-outline</title><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm.5-13h-1v6l5.2 3.1.5-.9-4.7-2.7Z"/></svg>`;
 
 let browserType = getBrowser();
 const watchAutoQueueRatioThreshold = 0.2;
@@ -95,6 +96,9 @@ const watchAutoQueueShortRatioThreshold = 0.8;
 const watchAutoQueuePollMs = 1000;
 const watchAutoQueueMaxDeltaSeconds = 2;
 const watchAutoQueueRetryCooldownMs = 30000;
+const injectThrottleMs = 120;
+const videoExistsCache = new Map();
+const videoExistsInflight = new Map();
 let watchAutoQueueEnabled = false;
 let likeAutoQueueEnabled = false;
 let watchProgressState = null;
@@ -138,6 +142,19 @@ const videoButtonVariantStyles = {
     position: 'absolute',
     top: 0,
     right: '32px',
+    zIndex: 2,
+  },
+  'lockup-menu-below': {
+    position: 'absolute',
+    top: '32px',
+    right: '-10px',
+    zIndex: 2,
+  },
+  'playlist-menu-below': {
+    position: 'relative',
+    top: 'auto',
+    right: 'auto',
+    marginTop: '8px',
     zIndex: 2,
   },
   default: {
@@ -615,6 +632,9 @@ function isElementVisible(element) {
 }
 
 function ensureTALinks() {
+  ensureThumbnailFallbackButtons();
+  ensureThumbnailHoverOverlayButtons();
+
   let shortsContainer = getShortsContainer();
   if (shortsContainer) {
     if (shortsContainer.hasTA && !shortsContainer.querySelector('.ta-shorts-button')) {
@@ -644,7 +664,17 @@ function ensureTALinks() {
   let titleContainerNodes = getTitleContainers();
   for (let titleContainer of titleContainerNodes) {
     let placement = getVideoButtonPlacement(titleContainer);
-    if (!placement || placement.container.hasTA) continue;
+    if (!placement) continue;
+
+    let existingButton = findExistingVideoButton(titleContainer);
+    let existingInTarget = placement.container.querySelector('.ta-button');
+
+    if (existingInTarget) continue;
+    if (existingButton && existingButton.parentElement === placement.container) continue;
+
+    if (existingButton && existingButton.parentElement) {
+      existingButton.remove();
+    }
 
     let videoButton = buildVideoButton(titleContainer, { variant: placement.variant });
     if (videoButton == null) continue;
@@ -655,10 +685,154 @@ function ensureTALinks() {
     } else {
       placement.container.appendChild(videoButton);
     }
-    placement.container.hasTA = true;
   }
 }
-ensureTALinks = throttled(ensureTALinks, 700);
+ensureTALinks = throttled(ensureTALinks, injectThrottleMs);
+
+function findExistingVideoButton(titleContainer) {
+  let videoId = getVideoId(titleContainer);
+  if (!videoId) return null;
+  return document.querySelector(`.ta-button[data-id="${CSS.escape(videoId)}"]`);
+}
+
+function ensureThumbnailHoverOverlayButtons() {
+  let overlays = document.querySelectorAll('yt-thumbnail-hover-overlay-toggle-actions-view-model');
+  for (let overlay of overlays) {
+    ensureThumbnailHoverOverlayButton(overlay);
+  }
+}
+
+function ensureThumbnailFallbackButtons() {
+  let thumbnails = document.querySelectorAll('yt-thumbnail-view-model');
+  for (let thumbnail of thumbnails) {
+    if (thumbnail.querySelector('yt-thumbnail-hover-overlay-toggle-actions-view-model')) continue;
+    if (thumbnail.querySelector('.ta-button')) continue;
+
+     let lockupHost = thumbnail.closest('.ytLockupViewModelHost');
+     let hasCompactMenuPlacement = Boolean(
+      lockupHost?.querySelector(
+        'yt-lockup-metadata-view-model.ytLockupMetadataViewModelCompact .ytLockupMetadataViewModelMenuButton'
+      )
+    );
+    if (hasCompactMenuPlacement) continue;
+
+    let videoId = getVideoIdForThumbnailViewModel(thumbnail);
+    if (!videoId) continue;
+
+    if (!thumbnail.style.position) {
+      thumbnail.style.position = 'relative';
+    }
+
+    let button = createRoundedDownloadButton(videoId, {
+      title: `TA download video: ${videoId}`,
+      size: 32,
+      iconSize: 16,
+    });
+    Object.assign(button.style, {
+      position: 'absolute',
+      top: '8px',
+      right: '8px',
+      zIndex: 3,
+    });
+
+    thumbnail.appendChild(button);
+    checkVideoExists(button);
+  }
+}
+
+function ensureThumbnailHoverOverlayButton(overlay) {
+  if (!overlay || overlay.querySelector('.ta-button')) return false;
+
+  let videoId = getVideoIdForHoverOverlay(overlay);
+  if (!videoId) return false;
+
+  let actionRow = document.createElement('div');
+  actionRow.className = 'ytThumbnailHoverOverlayToggleActionsViewModelButton';
+
+  let taButton = buildHoverOverlayVideoButton(videoId);
+  actionRow.appendChild(taButton);
+  overlay.appendChild(actionRow);
+
+  checkVideoExists(taButton);
+  return true;
+}
+
+function getVideoIdForHoverOverlay(overlay) {
+  let cardRoot = overlay.closest(videoCardRootSelector);
+  if (!cardRoot) return null;
+
+  let link = cardRoot.querySelector(videoLinkSelector);
+  let href = link?.getAttribute('href');
+  if (!href) return null;
+
+  try {
+    let url = new URL(href, location.href);
+    if (url.pathname === '/watch') {
+      return url.searchParams.get('v');
+    }
+    if (url.pathname.startsWith('/shorts/')) {
+      return url.pathname.split('/')[2] || null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function getVideoIdForThumbnailViewModel(thumbnail) {
+  let cardRoot = thumbnail.closest(videoCardRootSelector);
+  if (!cardRoot) return null;
+
+  let link = cardRoot.querySelector(videoLinkSelector);
+  let href = link?.getAttribute('href');
+  if (!href) return null;
+
+  try {
+    let url = new URL(href, location.href);
+    if (url.pathname === '/watch') {
+      return url.searchParams.get('v');
+    }
+    if (url.pathname.startsWith('/shorts/')) {
+      return url.pathname.split('/')[2] || null;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function buildHoverOverlayVideoButton(videoId) {
+  return createRoundedDownloadButton(videoId, {
+    title: `TA download video: ${videoId}`,
+    size: 32,
+    iconSize: 16,
+  });
+}
+
+function ensureThumbnailHoverOverlayButtonNear(element) {
+  if (!element) return;
+  let origin =
+    element instanceof Element ? element : element.parentElement || element.parentNode || null;
+  if (!(origin instanceof Element)) return;
+
+  let cardRoot = origin.closest(videoCardRootSelector);
+  if (!cardRoot) return;
+
+  let tryInject = () => {
+    let overlay = cardRoot.querySelector('yt-thumbnail-hover-overlay-toggle-actions-view-model');
+    if (!overlay) return false;
+    return ensureThumbnailHoverOverlayButton(overlay);
+  };
+
+  if (tryInject()) return;
+  requestAnimationFrame(() => {
+    if (tryInject()) return;
+    requestAnimationFrame(() => {
+      tryInject();
+    });
+  });
+}
 
 function adjustOwner(channelContainer) {
   return (
@@ -926,9 +1100,47 @@ function isShortsCardTitle(titleContainer) {
 }
 
 function getVideoButtonPlacement(titleContainer) {
+  let playlistRenderer = titleContainer.closest('ytd-playlist-video-renderer');
+  if (playlistRenderer) {
+    let menuContainer = playlistRenderer.querySelector('#menu');
+    if (menuContainer) {
+      return {
+        container: menuContainer,
+        variant: 'playlist-menu-below',
+      };
+    }
+  }
+
+  let hoverActionsContainer = getThumbnailHoverActionsContainer(titleContainer);
+  if (hoverActionsContainer) {
+    return {
+      container: hoverActionsContainer,
+      variant: 'thumbnail-hover-actions',
+    };
+  }
+
   if (titleContainer.classList.contains('ytLockupMetadataViewModelTitle')) {
     let container = titleContainer.closest('yt-lockup-metadata-view-model');
     if (!container) return null;
+
+    let host = container.closest('.ytLockupViewModelHost');
+    let isHorizontalLockup = host?.classList?.contains('ytLockupViewModelHorizontal');
+    if (isHorizontalLockup && container.classList.contains('ytLockupMetadataViewModelCompact')) {
+      return {
+        container,
+        variant: 'lockup-menu-below',
+      };
+    }
+
+    if (
+      container.classList.contains('ytLockupMetadataViewModelCompact') ||
+      container.classList.contains('ytLockupMetadataViewModelRichGridLegacyTypography')
+    ) {
+      return null;
+    }
+    if (isHorizontalLockup) {
+      return null;
+    }
     return {
       container,
       insertBefore: container.querySelector('.ytLockupMetadataViewModelMenuButton'),
@@ -947,6 +1159,12 @@ function getVideoButtonPlacement(titleContainer) {
   return { container, variant: 'default' };
 }
 
+function getThumbnailHoverActionsContainer(titleContainer) {
+  let cardRoot = getVideoCardRoot(titleContainer);
+  if (!cardRoot) return null;
+  return cardRoot.querySelector('yt-thumbnail-hover-overlay-toggle-actions-view-model');
+}
+
 function isUpcomingVideoCard(titleContainer) {
   const cardRoot = getVideoCardRoot(titleContainer);
   if (!cardRoot) return false;
@@ -957,6 +1175,82 @@ function isUpcomingVideoCard(titleContainer) {
       'lockup-attachments-view-model yt-flexible-actions-view-model toggle-button-view-model'
     )
   );
+}
+
+function createRoundedDownloadButton(videoId, options = {}) {
+  let {
+    title = `TA download video: ${videoId}`,
+    size = 32,
+    iconSize = 16,
+    ghostReveal = false,
+  } = options;
+
+  let dlButton = document.createElement('a');
+  dlButton.classList.add('ta-button', 'ta-hover-action');
+  if (ghostReveal) {
+    dlButton.classList.add('ta-hover-reveal');
+  }
+  dlButton.href = '#';
+  dlButton.setAttribute('data-id', videoId);
+  dlButton.setAttribute('data-type', 'video');
+  dlButton.title = title;
+
+  Object.assign(dlButton.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textDecoration: 'none',
+    width: `${size}px`,
+    height: `${size}px`,
+    borderRadius: '9999px',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
+    color: '#fff',
+    cursor: 'pointer',
+    opacity: 1,
+    transition: 'background-color 120ms ease, box-shadow 120ms ease, border-color 120ms ease',
+  });
+
+  if (ghostReveal) {
+    Object.assign(dlButton.style, {
+      border: '1px solid transparent',
+      backgroundColor: 'transparent',
+      boxShadow: 'none',
+      opacity: 0,
+      pointerEvents: 'none',
+      transition: 'opacity 100ms ease, background-color 120ms ease, box-shadow 120ms ease',
+    });
+  }
+
+  let dlIcon = document.createElement('span');
+  dlIcon.innerHTML = defaultIcon;
+  Object.assign(dlIcon.style, {
+    filter: 'invert()',
+    width: `${iconSize}px`,
+    height: `${iconSize}px`,
+    display: 'flex',
+  });
+  dlButton.appendChild(dlIcon);
+
+  dlButton.addEventListener('mouseenter', () => {
+    dlButton.style.backgroundColor = 'rgba(0, 32, 47, 0.88)';
+    dlButton.style.borderColor = 'rgba(255, 255, 255, 0.35)';
+    dlButton.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.35)';
+  });
+  dlButton.addEventListener('mouseleave', () => {
+    dlButton.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+    dlButton.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+    dlButton.style.boxShadow = '0 1px 4px rgba(0, 0, 0, 0.3)';
+  });
+
+  dlButton.addEventListener('click', e => {
+    e.preventDefault();
+    sendDownload(dlButton);
+    e.stopPropagation();
+  });
+
+  return dlButton;
 }
 
 function buildVideoButton(titleContainer, options = {}) {
@@ -973,19 +1267,38 @@ function buildVideoButton(titleContainer, options = {}) {
   dlButton.setAttribute('data-type', 'video');
   dlButton.title = `TA download video: ${titleContainer.innerText} [${videoId}]`;
 
-  Object.assign(dlButton.style, {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#00202f',
-    color: '#fff',
-    fontSize: '1.4rem',
-    textDecoration: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    height: 'fit-content',
-    opacity: 0,
-  });
+  let usesRoundedDesign =
+    variant === 'thumbnail-hover-actions' ||
+    variant === 'lockup-menu-below' ||
+    variant === 'playlist-menu-below';
+  let roundedSize = variant === 'lockup-menu-below' || variant === 'playlist-menu-below' ? 36 : 32;
+  let roundedIconSize =
+    variant === 'lockup-menu-below' || variant === 'playlist-menu-below' ? 18 : 16;
+
+  if (usesRoundedDesign) {
+    let roundedButton = createRoundedDownloadButton(videoId, {
+      title: `TA download video: ${titleContainer.innerText} [${videoId}]`,
+      size: roundedSize,
+      iconSize: roundedIconSize,
+      ghostReveal: variant === 'lockup-menu-below' || variant === 'playlist-menu-below',
+    });
+    Object.assign(roundedButton.style, videoButtonVariantStyles[variant] || {});
+    return roundedButton;
+  } else {
+    Object.assign(dlButton.style, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#00202f',
+      color: '#fff',
+      fontSize: '1.4rem',
+      textDecoration: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      height: 'fit-content',
+      opacity: 0,
+    });
+  }
 
   Object.assign(dlButton.style, videoButtonVariantStyles[variant] || {});
 
@@ -1075,6 +1388,46 @@ function getTitleOverlayContainer(titleContainer) {
 }
 
 function prepareVideoButtonContainer(container, taButton) {
+  if (taButton.classList.contains('ta-hover-reveal')) {
+    if (!container.style.position) {
+      container.style.position = 'relative';
+    }
+    let playlistHost = container.closest('ytd-playlist-video-renderer');
+    if (playlistHost && container.id === 'menu') {
+      Object.assign(container.style, {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+      });
+    }
+    let hoverHost = playlistHost || container;
+    if (hoverHost.taHoverRevealListener) return;
+
+    hoverHost.addEventListener('mouseenter', () => {
+      taButton.style.opacity = 1;
+      taButton.style.pointerEvents = 'auto';
+      taButton.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+      taButton.style.boxShadow = 'rgba(0, 0, 0, 0.3) 0px 1px 4px';
+      if (!taButton.isChecked) {
+        checkVideoExists(taButton);
+      }
+    });
+    hoverHost.addEventListener('mouseleave', () => {
+      taButton.style.opacity = 0;
+      taButton.style.pointerEvents = 'none';
+      taButton.style.backgroundColor = 'transparent';
+      taButton.style.boxShadow = 'none';
+    });
+    hoverHost.taHoverRevealListener = true;
+    return;
+  }
+
+  if (taButton.classList.contains('ta-hover-action')) {
+    return;
+  }
+
   if (!container.style.position) {
     container.style.position = 'relative';
   }
@@ -1093,17 +1446,11 @@ function prepareVideoButtonContainer(container, taButton) {
 }
 
 function checkVideoExists(taButton) {
-  function handleResponse(message) {
-    let buttonSpan = taButton.querySelector('span') || taButton;
-    if (message !== false) {
-      buttonSpan.innerHTML = checkmarkIcon;
-      buttonSpan.title = 'Open in TA';
-      buttonSpan.addEventListener('click', () => {
-        let win = window.open(message, '_blank');
-        win.focus();
-      });
+  function applyExistsState(message) {
+    if (typeof message === 'string' && message) {
+      setButtonOpenState(taButton, message);
     } else {
-      buttonSpan.innerHTML = downloadIcon;
+      setButtonDefaultState(taButton);
     }
     taButton.isChecked = true;
   }
@@ -1124,9 +1471,35 @@ function checkVideoExists(taButton) {
     }
   }
 
-  let message = { type: 'videoExists', videoId };
-  let sending = sendMessage(message);
-  sending.then(handleResponse, handleError);
+  if (videoExistsCache.has(videoId)) {
+    let cached = videoExistsCache.get(videoId);
+    if (cached === true) {
+      // Legacy invalid cached value from old logic: treat as unknown.
+      videoExistsCache.delete(videoId);
+    } else {
+      applyExistsState(cached);
+      return;
+    }
+  }
+
+  if (videoExistsInflight.has(videoId)) {
+    videoExistsInflight
+      .get(videoId)
+      .then(applyExistsState, handleError);
+    return;
+  }
+
+  let requestPromise = sendMessage({ type: 'videoExists', videoId });
+  videoExistsInflight.set(videoId, requestPromise);
+  requestPromise
+    .then(message => {
+      videoExistsCache.set(videoId, message);
+      applyExistsState(message);
+    })
+    .catch(handleError)
+    .finally(() => {
+      videoExistsInflight.delete(videoId);
+    });
 }
 
 function getShortsContainer() {
@@ -1152,16 +1525,20 @@ function buildShortsButton() {
   btn.setAttribute('data-id', videoId);
   btn.setAttribute('data-type', 'video');
   btn.title = `TA download: ${videoId}`;
+  btn.classList.add('ta-hover-action');
   Object.assign(btn.style, {
     width: '48px',
     height: '48px',
     borderRadius: '50%',
-    border: 'none',
-    backgroundColor: '#00202f',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    boxShadow: 'rgba(0, 0, 0, 0.3) 0px 1px 4px',
+    color: 'rgb(255, 255, 255)',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    transition: 'background-color 120ms, box-shadow 120ms, border-color 120ms',
   });
 
   let iconSpan = document.createElement('span');
@@ -1173,6 +1550,17 @@ function buildShortsButton() {
     display: 'flex',
   });
   btn.appendChild(iconSpan);
+
+  btn.addEventListener('mouseenter', () => {
+    btn.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+    btn.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+    btn.style.boxShadow = 'rgba(0, 0, 0, 0.35) 0px 2px 8px';
+  });
+  btn.addEventListener('mouseleave', () => {
+    btn.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+    btn.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+    btn.style.boxShadow = 'rgba(0, 0, 0, 0.3) 0px 1px 4px';
+  });
 
   btn.addEventListener('click', e => {
     e.preventDefault();
@@ -1193,6 +1581,11 @@ function buildShortsButton() {
 }
 
 function sendDownload(button) {
+  if (button.dataset.taState === 'open' && button.dataset.openUrl) {
+    let win = window.open(button.dataset.openUrl, '_blank');
+    win?.focus?.();
+    return;
+  }
   let url = button.dataset.id;
   if (!url) return;
   sendUrl(url, 'download', button);
@@ -1226,14 +1619,38 @@ function buttonSuccess(button) {
       buttonSpan.innerHTML = 'Unsubscribe';
     }, 2000);
   } else {
-    buttonSpan.innerHTML = checkmarkIcon;
+    setButtonQueuedState(button);
   }
+}
+
+function setButtonDefaultState(button) {
+  let buttonSpan = button.querySelector('span') || button;
+  buttonSpan.innerHTML = downloadIcon;
+  buttonSpan.title = 'Queue download';
+  button.dataset.taState = 'download';
+  delete button.dataset.openUrl;
+}
+
+function setButtonQueuedState(button) {
+  let buttonSpan = button.querySelector('span') || button;
+  buttonSpan.innerHTML = queuedIcon;
+  buttonSpan.title = 'Queued';
+  button.dataset.taState = 'queued';
+  delete button.dataset.openUrl;
+}
+
+function setButtonOpenState(button, openUrl) {
+  let buttonSpan = button.querySelector('span') || button;
+  buttonSpan.innerHTML = checkmarkIcon;
+  buttonSpan.title = 'Open in TA';
+  button.dataset.taState = 'open';
+  button.dataset.openUrl = openUrl;
 }
 
 function sendUrl(url, action, button) {
   function handleResponse(message) {
     console.log('sendUrl response: ' + JSON.stringify(message));
-    if (message === null || message.detail === 'Invalid token.') {
+    if (!message || (typeof message === 'object' && message.detail === 'Invalid token.')) {
       buttonError(button);
     } else {
       buttonSuccess(button);
@@ -1305,6 +1722,10 @@ const handleLikeButtonClick = throttled(() => {
   window.setTimeout(trackLikedVideoState, 250);
 }, 200);
 
+function handleHoverOverlayPointer(event) {
+  ensureThumbnailHoverOverlayButtonNear(event.target);
+}
+
 let observer = new MutationObserver(list => {
   const currentHref = document.location.href;
   if (currentHref !== oldHref) {
@@ -1322,6 +1743,27 @@ let observer = new MutationObserver(list => {
 });
 
 observer.observe(document.body, { attributes: false, childList: true, subtree: true });
+
+function handleHistoryNavigationRefresh() {
+  cleanButtons();
+  oldHref = document.location.href;
+  resetWatchProgressState(getCurrentPlaybackVideoId());
+  resetLikeQueueState(getCurrentPlaybackVideoId());
+  ensureTALinks();
+  attachWatchProgressListeners();
+  trackLikedVideoState();
+}
+
+window.addEventListener('popstate', () => {
+  window.setTimeout(handleHistoryNavigationRefresh, 0);
+});
+
+window.addEventListener('pageshow', event => {
+  if (event.persisted) {
+    window.setTimeout(handleHistoryNavigationRefresh, 0);
+  }
+});
+
 document.addEventListener(
   'click',
   event => {
@@ -1331,6 +1773,7 @@ document.addEventListener(
   },
   true
 );
+document.addEventListener('pointerenter', handleHoverOverlayPointer, true);
 
 browserType.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
