@@ -21,4 +21,15 @@ module.exports = {
     'no-func-assign': 'off',
     'no-inner-declarations': 'off',
   },
+  overrides: [
+    {
+      files: ['extension/popup.js', 'extension/popup/**/*.js'],
+      parserOptions: {
+        sourceType: 'module',
+      },
+      rules: {
+        strict: 'off',
+      },
+    },
+  ],
 };

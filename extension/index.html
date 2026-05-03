@@ -20,96 +20,192 @@
             <span id="extension-version" class="version">v0.0.0</span>
         </header>
 
-        <section class="card connection-card" id="connection-card" data-collapsed="false">
-            <div class="section-head">
-                <div>
-                    <h1>Connection</h1>
-                    <p>Settings save automatically as you type.</p>
-                </div>
-                <div class="connection-head-actions">
-                    <span id="connection-state" class="status-badge" data-state="idle">Not tested</span>
-                </div>
-            </div>
-            <div id="connection-summary" class="connection-summary">
-                <div class="connection-summary-row">
-                    <strong id="connection-summary-url">No connection configured</strong>
-                    <button type="button" id="connection-toggle" class="icon-button" aria-label="Edit connection">
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.04a1.003 1.003 0 0 0 0-1.42l-2.5-2.5a1.003 1.003 0 0 0-1.42 0l-1.96 1.96 3.75 3.75 2.13-1.79z"/>
-                        </svg>
-                    </button>
-                </div>
-                <p id="connection-summary-meta">Open this section to set your URL and API token.</p>
-            </div>
-            <form id="connection-form" class="settings-form" novalidate>
-                <label class="field" for="full-url">
-                    <span>Tube Archivist URL</span>
-                    <input type="text" id="full-url" name="url" placeholder="https://demo.tubearchivist.com">
-                </label>
-                <label class="field" for="api-key">
-                    <span>API token</span>
-                    <input type="password" id="api-key" name="api-key" placeholder="Paste your API token">
-                </label>
-            </form>
-            <div class="section-actions">
-                <p id="save-state" class="hint">Changes save automatically and the connection is checked for you.</p>
-            </div>
-            <div id="error-out" class="feedback" role="alert"></div>
-        </section>
+        <nav class="tabs" aria-label="Extension sections">
+            <button type="button" class="tab-button" data-tab-target="downloads-panel" aria-controls="downloads-panel" aria-selected="true">Downloads</button>
+            <button type="button" class="tab-button" data-tab-target="archive-panel" aria-controls="archive-panel" aria-selected="false">Archived</button>
+            <button type="button" class="tab-button" data-tab-target="settings-panel" aria-controls="settings-panel" aria-selected="false">Settings</button>
+        </nav>
 
-        <section class="card">
-            <div class="section-head">
-                <div>
-                    <h2>Cookies</h2>
-                    <p>Keep TubeArchivist ready to access YouTube cookies.</p>
-                </div>
-                <span id="sendCookiesStatus" class="status-badge" data-state="idle">Unknown</span>
-            </div>
-            <label class="toggle-row" for="continuous-sync">
-                <div>
-                    <strong>Continuous cookie sync</strong>
-                    <p>Automatically refresh stored cookies after changes in your browser.</p>
-                </div>
-                <input type="checkbox" id="continuous-sync" name="continuous-sync">
-            </label>
-            <div class="button-row">
-                <button type="button" id="sendCookies">Sync now</button>
-                <button type="button" id="showCookies" class="secondary">Show cookies</button>
-            </div>
-            <textarea id="cookieLinesResponse" readonly></textarea>
-        </section>
+        <main>
+            <div id="settings-panel" class="tab-panel" role="tabpanel" hidden>
+                <section class="card connection-card" id="connection-card" data-collapsed="false">
+                    <div class="section-head">
+                        <div class="archive-head-main">
+                            <h1>Connection</h1>
+                            <p>Settings save automatically as you type.</p>
+                        </div>
+                        <div class="connection-head-actions">
+                            <span id="connection-state" class="status-badge" data-state="idle">Not tested</span>
+                        </div>
+                    </div>
+                    <div id="connection-summary" class="connection-summary">
+                        <div class="connection-summary-row">
+                            <strong id="connection-summary-url">No connection configured</strong>
+                            <button type="button" id="connection-toggle" class="icon-button" aria-label="Edit connection">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.04a1.003 1.003 0 0 0 0-1.42l-2.5-2.5a1.003 1.003 0 0 0-1.42 0l-1.96 1.96 3.75 3.75 2.13-1.79z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p id="connection-summary-meta">Open this section to set your URL and API token.</p>
+                    </div>
+                    <form id="connection-form" class="settings-form" novalidate>
+                        <label class="field" for="full-url">
+                            <span>Tube Archivist URL</span>
+                            <input type="text" id="full-url" name="url" placeholder="https://demo.tubearchivist.com">
+                        </label>
+                        <label class="field" for="api-key">
+                            <span>API token</span>
+                            <input type="password" id="api-key" name="api-key" placeholder="Paste your API token">
+                        </label>
+                    </form>
+                    <div class="section-actions">
+                        <p id="save-state" class="hint">Changes save automatically and the connection is checked for you.</p>
+                    </div>
+                    <div id="error-out" class="feedback" role="alert"></div>
+                </section>
 
-        <section class="card">
-            <div class="section-head">
-                <div>
-                    <h2>Downloads</h2>
-                    <p>Choose how videos should be queued from YouTube.</p>
-                </div>
+                <section class="card">
+                    <div class="section-head">
+                        <div>
+                            <h2>Cookies</h2>
+                            <p>Keep TubeArchivist ready to access YouTube cookies.</p>
+                        </div>
+                        <span id="sendCookiesStatus" class="status-badge" data-state="idle">Unknown</span>
+                    </div>
+                    <label class="toggle-row" for="continuous-sync">
+                        <div>
+                            <strong>Continuous cookie sync</strong>
+                            <p>Automatically refresh stored cookies after changes in your browser.</p>
+                        </div>
+                        <input type="checkbox" id="continuous-sync" name="continuous-sync">
+                    </label>
+                    <div class="button-row">
+                        <button type="button" id="sendCookies">Sync now</button>
+                        <button type="button" id="showCookies" class="secondary">Show cookies</button>
+                    </div>
+                    <textarea id="cookieLinesResponse" readonly></textarea>
+                </section>
+
+                <section class="card">
+                    <div class="section-head">
+                        <div>
+                            <h2>Downloads</h2>
+                            <p>Choose how videos should be queued from YouTube.</p>
+                        </div>
+                    </div>
+                    <div class="toggle-list">
+                        <label class="toggle-row" for="watch-auto-queue">
+                            <div>
+                                <strong>Auto queue watched videos</strong>
+                                <p>Add a video once you have genuinely watched enough of it.</p>
+                            </div>
+                            <input type="checkbox" id="watch-auto-queue" name="watch-auto-queue">
+                        </label>
+                        <label class="toggle-row" for="like-auto-queue">
+                            <div>
+                                <strong>Auto queue liked videos</strong>
+                                <p>Add a video when you press Like, unless it already exists in TubeArchivist.</p>
+                            </div>
+                            <input type="checkbox" id="like-auto-queue" name="like-auto-queue">
+                        </label>
+                        <label class="toggle-row" for="autostart">
+                            <div>
+                                <strong>Autostart downloads</strong>
+                                <p>Start downloads immediately when the extension sends them.</p>
+                            </div>
+                            <input type="checkbox" id="autostart" name="autostart">
+                        </label>
+                    </div>
+                </section>
             </div>
-            <div class="toggle-list">
-                <label class="toggle-row" for="watch-auto-queue">
-                    <div>
-                        <strong>Auto queue watched videos</strong>
-                        <p>Add a video once you have genuinely watched enough of it.</p>
+
+            <div id="downloads-panel" class="tab-panel" role="tabpanel">
+                <section class="list-card">
+                    <div class="section-head">
+                        <div>
+                            <div class="panel-title-row">
+                                <h1>Downloads</h1>
+                                <a id="downloads-link" class="icon-link" href="#" target="_blank" rel="noreferrer" aria-label="Open downloads" title="Open downloads">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3z"></path>
+                                        <path d="M5 5h7v2H7v10h10v-5h2v7H5V5z"></path>
+                                    </svg>
+                                </a>
+                                <button id="downloads-refresh" type="button" class="icon-link icon-link-button" aria-label="Reload downloads" title="Reload downloads">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6a6 6 0 01-6 6 6 6 0 01-5.65-4H4.26A8 8 0 0012 20a8 8 0 000-16z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <p>Queue items from Tube Archivist.</p>
+                        </div>
+                        <div class="panel-head-actions">
+                            <span id="downloads-count" class="status-badge" data-state="idle">0</span>
+                        </div>
                     </div>
-                    <input type="checkbox" id="watch-auto-queue" name="watch-auto-queue">
-                </label>
-                <label class="toggle-row" for="like-auto-queue">
-                    <div>
-                        <strong>Auto queue liked videos</strong>
-                        <p>Add a video when you press Like, unless it already exists in TubeArchivist.</p>
-                    </div>
-                    <input type="checkbox" id="like-auto-queue" name="like-auto-queue">
-                </label>
-                <label class="toggle-row" for="autostart">
-                    <div>
-                        <strong>Autostart downloads</strong>
-                        <p>Start downloads immediately when the extension sends them.</p>
-                    </div>
-                    <input type="checkbox" id="autostart" name="autostart">
-                </label>
+                    <div id="downloads-list" class="item-list"></div>
+                    <div id="downloads-sentinel" class="scroll-sentinel"></div>
+                    <p id="downloads-state" class="list-state">Loading downloads...</p>
+                </section>
             </div>
-        </section>
+
+            <div id="archive-panel" class="tab-panel" role="tabpanel" hidden>
+                <section class="list-card">
+                    <div class="section-head">
+                        <div>
+                            <div class="panel-title-row">
+                                <h1>Archived</h1>
+                                <a id="archive-home-link" class="icon-link" href="#" target="_blank" rel="noreferrer" aria-label="Open TubeArchivist" title="Open TubeArchivist">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3z"></path>
+                                        <path d="M5 5h7v2H7v10h10v-5h2v7H5V5z"></path>
+                                    </svg>
+                                </a>
+                                <button id="archive-refresh" type="button" class="icon-link icon-link-button" aria-label="Reload archived videos" title="Reload archived videos">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6a6 6 0 01-6 6 6 6 0 01-5.65-4H4.26A8 8 0 0012 20a8 8 0 000-16z"></path>
+                                    </svg>
+                                </button>
+                                <button id="archive-search-toggle" type="button" class="icon-link icon-link-button" aria-label="Search archived videos" title="Search archived videos" aria-expanded="false" aria-controls="archive-search-wrap">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M11 4a7 7 0 105.03 11.87l3.55 3.55 1.42-1.42-3.55-3.55A7 7 0 0011 4zm0 2a5 5 0 110 10 5 5 0 010-10z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <p>Downloaded videos in TubeArchivist.</p>
+                        </div>
+                        <div class="panel-head-actions">
+                            <span id="archive-count" class="status-badge" data-state="idle">0</span>
+                        </div>
+                    </div>
+                    <div id="archive-search-wrap" class="archive-search-wrap" hidden>
+                        <input id="archive-search-input" type="search" class="archive-search-input" placeholder="Search archived videos..." aria-label="Search archived videos">
+                        <select id="archive-type" class="archive-search-select archive-search-select-type" aria-label="Video type">
+                            <option value="">All</option>
+                            <option value="videos">Video</option>
+                            <option value="shorts">Short</option>
+                            <option value="streams">Stream</option>
+                        </select>
+                        <select id="archive-sort" class="archive-search-select" aria-label="Sort">
+                            <option value="downloaded:desc">Downloaded (Newest)</option>
+                            <option value="downloaded:asc">Downloaded (Oldest)</option>
+                            <option value="published:desc">Published (Newest)</option>
+                            <option value="published:asc">Published (Oldest)</option>
+                        </select>
+                        <button id="archive-search-close" type="button" class="icon-link icon-link-button" aria-label="Close search" title="Close search">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M18.3 5.71L12 12l6.3 6.29-1.41 1.41L10.59 13.4 4.29 19.7 2.88 18.29 9.17 12 2.88 5.71 4.29 4.3l6.3 6.29 6.29-6.3z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="archive-list" class="item-list id-list"></div>
+                    <div id="archive-sentinel" class="scroll-sentinel"></div>
+                    <p id="archive-stats" class="list-state">Stats loading...</p>
+                    <p id="archive-state" class="list-state">Loading archive...</p>
+                </section>
+            </div>
+        </main>
 
         <footer class="icons">
             <div class="social-links">
@@ -130,6 +226,6 @@
             </div>
         </footer>
     </div>
-    <script type="text/javascript" src="popup.js"></script>
+    <script type="module" src="popup.js"></script>
 </body>
 </html>

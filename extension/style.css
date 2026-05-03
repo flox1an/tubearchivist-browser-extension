@@ -91,6 +91,25 @@ body {
     font-size: 0.78rem;
 }
 
+.tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 5px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-control);
+    background: rgba(2, 17, 26, 0.58);
+}
+
+.tab-panel {
+    display: grid;
+    gap: 14px;
+}
+
+.tab-panel[hidden] {
+    display: none;
+}
+
 .card {
     padding: 16px;
     border: 1px solid var(--surface-border);
@@ -114,6 +133,44 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.panel-head-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.icon-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-pill);
+    color: var(--accent-strong);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.icon-link:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.icon-link svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+.panel-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.archive-head-main {
+    flex: 1;
+    min-width: 0;
 }
 
 .section-head h1,
@@ -143,6 +200,12 @@ body {
     font-size: 0.76rem;
     font-weight: 600;
     white-space: nowrap;
+}
+
+.status-badge-compact {
+    min-width: 64px;
+    padding: 5px 8px;
+    font-size: 0.7rem;
 }
 
 #sendCookiesStatus {
@@ -253,6 +316,26 @@ button:disabled {
     opacity: 0.7;
     cursor: wait;
     transform: none;
+}
+
+.tabs .tab-button {
+    min-width: 0;
+    padding: 9px 8px;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+    font-size: 0.82rem;
+}
+
+.tabs .tab-button:hover {
+    transform: none;
+    background: var(--muted-surface);
+}
+
+.tabs .tab-button[aria-selected="true"] {
+    background: var(--accent);
+    color: #03231c;
 }
 
 .hint {
@@ -389,6 +472,213 @@ button:disabled {
     min-height: 124px;
     margin-top: 12px;
     resize: vertical;
+}
+
+.list-card {
+    min-height: 360px;
+}
+
+.item-list {
+    display: grid;
+    gap: 6px;
+}
+
+.archive-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -4px 0 8px;
+    width: 100%;
+    padding: 6px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-control);
+    background: rgba(2, 17, 26, 0.42);
+}
+
+.archive-search-input {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 32px;
+    min-width: 0;
+    padding: 0 11px;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--control-border);
+    background: var(--control-bg);
+    color: var(--text-main);
+    font-size: 0.8rem;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.archive-search-input::placeholder {
+    color: rgba(158, 200, 192, 0.58);
+}
+
+.archive-search-input:focus {
+    outline: none;
+    border-color: rgba(82, 224, 191, 0.8);
+    box-shadow: 0 0 0 3px rgba(82, 224, 191, 0.14);
+    background: var(--control-bg-focus);
+}
+
+.archive-search-input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.archive-search-select {
+    flex: 0 0 auto;
+    height: 32px;
+    border: 1px solid var(--control-border);
+    border-radius: 10px;
+    background: var(--control-bg);
+    color: var(--text-main);
+    font-size: 0.75rem;
+    padding: 0 8px;
+}
+
+.archive-search-select:focus {
+    outline: none;
+    border-color: rgba(82, 224, 191, 0.8);
+    box-shadow: 0 0 0 3px rgba(82, 224, 191, 0.14);
+    background: var(--control-bg-focus);
+    max-width: 156px;
+}
+
+.archive-search-select-type {
+    max-width: 88px;
+}
+
+.icon-link-button {
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+}
+
+#archive-search-toggle[data-state="enabled"] {
+    border-color: rgba(82, 224, 191, 0.3);
+    background: rgba(82, 224, 191, 0.14);
+    color: var(--success);
+}
+
+.list-item {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 7px;
+    border: 1px solid rgba(151, 212, 200, 0.12);
+    border-radius: var(--radius-control);
+    background: rgba(2, 17, 26, 0.42);
+    color: inherit;
+    text-decoration: none;
+}
+
+.list-item:hover {
+    border-color: rgba(82, 224, 191, 0.34);
+    background: rgba(2, 21, 33, 0.7);
+}
+
+.item-thumb {
+    width: 76px;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 8px;
+    background: var(--muted-surface-strong);
+}
+
+.item-thumb img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.item-body {
+    min-width: 0;
+}
+
+.item-body strong,
+.item-body code {
+    display: block;
+    overflow: hidden;
+    color: var(--text-main);
+    font-size: 0.85rem;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.item-body code {
+    color: var(--accent-strong);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.item-body p {
+    margin: 2px 0 0;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.item-message {
+    color: var(--danger) !important;
+}
+
+.item-status {
+    max-width: 78px;
+    overflow: hidden;
+    padding: 4px 6px;
+    border-radius: var(--radius-pill);
+    background: var(--muted-surface-strong);
+    color: var(--text-muted);
+    font-size: 0.64rem;
+    font-weight: 700;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.item-status[data-state="pending"],
+.item-status[data-state="priority"] {
+    background: rgba(122, 240, 190, 0.14);
+    color: var(--success);
+}
+
+.item-status[data-state="ignore"] {
+    background: rgba(255, 211, 124, 0.14);
+    color: var(--warning);
+}
+
+.archive-item {
+    grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.archive-item .item-thumb {
+    width: 76px;
+}
+
+.scroll-sentinel {
+    height: 1px;
+}
+
+.list-state {
+    margin: 8px 0 0;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-align: center;
+}
+
+.list-state[data-state="success"] {
+    color: var(--success);
+}
+
+.list-state[data-state="error"] {
+    color: var(--danger);
 }
 
 .icons {

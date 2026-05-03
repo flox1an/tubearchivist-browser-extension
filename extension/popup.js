@@ -4,78 +4,76 @@ Loaded into popup index.html
 
 'use strict';
 
+import { el, getBrowser } from './popup/dom.js';
+import { createServices } from './popup/services.js';
+import { normalizeArchiveUiState, popupUiStateKey, toPersistedUiState } from './popup/uiState.js';
+
 let browserType = getBrowser();
+const { sendMessage, storageGet, storageSet } = createServices(browserType);
 const autosaveDelayMs = 500;
 const connectionToggleLockMs = 250;
 const visibleDisplay = 'block';
 const hiddenDisplay = 'none';
 
-const connectionCard = document.getElementById('connection-card');
-const taUrlLink = document.getElementById('ta-url');
-const extensionVersion = document.getElementById('extension-version');
-const errorOut = document.getElementById('error-out');
-const fullUrlInput = document.getElementById('full-url');
-const apiKeyInput = document.getElementById('api-key');
-const connectionState = document.getElementById('connection-state');
-const connectionToggle = document.getElementById('connection-toggle');
-const connectionSummaryUrl = document.getElementById('connection-summary-url');
-const connectionSummaryMeta = document.getElementById('connection-summary-meta');
-const saveState = document.getElementById('save-state');
-const cookieStatus = document.getElementById('sendCookiesStatus');
-const cookieResponseTextArea = document.getElementById('cookieLinesResponse');
-const showCookiesButton = document.getElementById('showCookies');
-const continuousSyncInput = document.getElementById('continuous-sync');
-const autostartInput = document.getElementById('autostart');
-const watchAutoQueueInput = document.getElementById('watch-auto-queue');
-const likeAutoQueueInput = document.getElementById('like-auto-queue');
+const {
+  connectionCard,
+  taUrlLink,
+  extensionVersion,
+  errorOut,
+  fullUrlInput,
+  apiKeyInput,
+  connectionState,
+  connectionToggle,
+  connectionSummaryUrl,
+  connectionSummaryMeta,
+  saveState,
+  cookieStatus,
+  cookieResponseTextArea,
+  showCookiesButton,
+  continuousSyncInput,
+  autostartInput,
+  watchAutoQueueInput,
+  likeAutoQueueInput,
+  downloadsList,
+  downloadsState,
+  downloadsCount,
+  downloadsSentinel,
+  archiveList,
+  archiveState,
+  archiveCount,
+  archiveSentinel,
+  downloadsLink,
+  downloadsRefresh,
+  archiveHomeLink,
+  archiveRefresh,
+  archiveStats,
+  archiveSearchToggle,
+  archiveSearchWrap,
+  archiveSearchInput,
+  archiveType,
+  archiveSort,
+  archiveSearchClose,
+} = el;
+
+const tabButtons = document.querySelectorAll('.tab-button');
+const tabPanels = document.querySelectorAll('.tab-panel');
 
 let autosaveTimeout = null;
 let connectionRequestToken = 0;
 let connectionCollapsed = false;
 let connectionToggleLocked = false;
-
-// boilerplate to dedect browser type api
-function getBrowser() {
-  if (typeof chrome !== 'undefined') {
-    if (typeof browser !== 'undefined') {
-      return browser;
-    } else {
-      return chrome;
-    }
-  } else {
-    console.log('failed to detect browser');
-    throw 'browser detection error';
-  }
-}
-
-function storageGet(keys) {
-  return new Promise(resolve => {
-    browserType.storage.local.get(keys, result => resolve(result));
-  });
-}
-
-function storageSet(values) {
-  return new Promise((resolve, reject) => {
-    browserType.storage.local.set(values, () => {
-      if (browserType.runtime.lastError) {
-        reject(browserType.runtime.lastError);
-        return;
-      }
-      resolve();
-    });
-  });
-}
+let archiveStatsLoaded = false;
+let downloadsStatsLoaded = false;
+let archiveSearchVisible = false;
+let archiveSearchTerm = '';
+let archiveSearchDebounceTimer = null;
+let archiveSortBy = 'downloaded';
+let archiveSortOrderValue = 'desc';
+let archiveTypeValue = '';
+let activePanelId = 'downloads-panel';
 
 function setExtensionVersion() {
   extensionVersion.textContent = `v${browserType.runtime.getManifest().version}`;
-}
-
-async function sendMessage(message) {
-  let { success, value } = await browserType.runtime.sendMessage(message);
-  if (!success) {
-    throw value;
-  }
-  return value;
 }
 
 function setError(message) {
@@ -98,12 +96,288 @@ function setBadge(element, message, state = 'idle') {
   element.textContent = message;
 }
 
+async function persistPopupUiState() {
+  let popupUiState = toPersistedUiState({
+    activePanelId,
+    archiveSearchVisible,
+    archiveSearchTerm,
+    archiveSortBy,
+    archiveSortOrderValue,
+    archiveTypeValue,
+  });
+  await storageSet({ [popupUiStateKey]: popupUiState });
+}
+
+function formatResultCount(total, maxHits) {
+  let normalizedTotal = Number(total);
+  if (!Number.isFinite(normalizedTotal)) {
+    return '0';
+  }
+
+  let formatted = normalizedTotal.toLocaleString();
+  return maxHits ? `${formatted}+` : formatted;
+}
+
+function formatDuration(value) {
+  if (!value && value !== 0) return '';
+  if (typeof value === 'string') return value;
+
+  let seconds = Number(value);
+  if (Number.isNaN(seconds)) return '';
+
+  let hours = Math.floor(seconds / 3600);
+  let minutes = Math.floor((seconds % 3600) / 60);
+  let remainingSeconds = Math.floor(seconds % 60);
+  let parts = hours > 0 ? [hours, minutes, remainingSeconds] : [minutes, remainingSeconds];
+  return parts.map(part => part.toString().padStart(2, '0')).join(':');
+}
+
+function formatPublished(value) {
+  if (!value) return '';
+
+  let parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return parsed.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function createMetaText(parts) {
+  return parts.filter(Boolean).join(' · ');
+}
+
+function createThumb(item) {
+  let thumb = document.createElement('div');
+  thumb.className = 'item-thumb';
+
+  let thumbSrc = item.youtube_id
+    ? `https://i.ytimg.com/vi/${encodeURIComponent(item.youtube_id)}/mqdefault.jpg`
+    : null;
+  if (!thumbSrc && item.vid_thumb_url) {
+    thumbSrc = item.ta_base_url
+      ? new URL(item.vid_thumb_url, item.ta_base_url).href
+      : item.vid_thumb_url;
+  }
+
+  if (thumbSrc) {
+    let image = document.createElement('img');
+    image.src = thumbSrc;
+    image.alt = '';
+    image.loading = 'lazy';
+    thumb.appendChild(image);
+  }
+
+  return thumb;
+}
+
+function createArchiveLink(item) {
+  let link = document.createElement('a');
+  if (item.youtube_id && item.ta_base_url) {
+    link.href = new URL(`video/${encodeURIComponent(item.youtube_id)}`, item.ta_base_url).href;
+  } else if (item.youtube_id && taUrlLink.getAttribute('href') && taUrlLink.getAttribute('href') !== '#') {
+    link.href = new URL(
+      `video/${encodeURIComponent(item.youtube_id)}`,
+      taUrlLink.getAttribute('href')
+    ).href;
+  } else {
+    link.href = '#';
+  }
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  return link;
+}
+
+function renderDownloadItem(item) {
+  let link = document.createElement('a');
+  link.href = item.youtube_id ? `https://www.youtube.com/watch?v=${item.youtube_id}` : '#';
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  link.className = 'list-item';
+
+  let body = document.createElement('div');
+  body.className = 'item-body';
+
+  let title = document.createElement('strong');
+  title.textContent = item.title || item.youtube_id || 'Untitled download';
+
+  let meta = document.createElement('p');
+  meta.textContent = createMetaText([
+    item.channel_name,
+    formatDuration(item.duration),
+    formatPublished(item.published),
+  ]);
+
+  body.append(title, meta);
+  link.append(createThumb(item), body);
+
+  if (item.message) {
+    let message = document.createElement('p');
+    message.className = 'item-message';
+    message.textContent = item.message;
+    body.appendChild(message);
+  }
+
+  return link;
+}
+
+function renderArchiveItem(item) {
+  let link = createArchiveLink(item);
+  link.className = 'list-item archive-item';
+
+  let body = document.createElement('div');
+  body.className = 'item-body';
+
+  let title = document.createElement('strong');
+  title.textContent = item.title || 'Untitled archived video';
+
+  let meta = document.createElement('p');
+  meta.textContent = createMetaText([item.channel?.channel_name, item.vid_type, formatPublished(item.published)]);
+
+  body.append(title, meta);
+  link.append(createThumb(item), body);
+
+  return link;
+}
+
+async function loadDownloadsStats() {
+  if (downloadsStatsLoaded) return;
+
+  try {
+    let stats = await sendMessage({ type: 'getDownloadStats' });
+    let pending = Number(stats?.pending);
+    if (Number.isFinite(pending)) {
+      setBadge(downloadsCount, pending.toLocaleString(), pending > 0 ? 'enabled' : 'idle');
+      downloadsStatsLoaded = true;
+    }
+  } catch {
+    // Keep the list-derived badge fallback on errors.
+  }
+}
+
+function createPagedList({
+  messageType,
+  listElement,
+  stateElement,
+  countElement,
+  sentinel,
+  renderItem,
+  itemFilter = null,
+  buildRequest = null,
+}) {
+  let state = {
+    nextPage: 1,
+    loading: false,
+    hasMore: true,
+    loaded: false,
+    totalLoaded: 0,
+  };
+
+  function setListState(message, badgeState = 'idle') {
+    stateElement.textContent = message;
+    stateElement.dataset.state = badgeState;
+  }
+
+  function reset() {
+    state.nextPage = 1;
+    state.loading = false;
+    state.hasMore = true;
+    state.loaded = false;
+    state.totalLoaded = 0;
+    listElement.replaceChildren();
+    setBadge(countElement, '0', 'idle');
+    setListState('Loading...');
+  }
+
+  async function loadNextPage() {
+    if (state.loading || !state.hasMore) return;
+
+    state.loading = true;
+    setListState(state.totalLoaded > 0 ? 'Loading more...' : 'Loading...');
+
+    try {
+      let page = state.nextPage;
+      let message = buildRequest ? buildRequest(page) : { type: messageType, page };
+      let response = await sendMessage(message);
+      if (response?.detail || response?.error) {
+        throw new Error(response.detail || response.error);
+      }
+
+      let items = Array.isArray(response?.data) ? response.data : [];
+      if (itemFilter) {
+        items = items.filter(itemFilter);
+      }
+      let pagination = response?.paginate || {};
+
+      for (let item of items) {
+        listElement.appendChild(renderItem(item));
+      }
+
+      state.totalLoaded += items.length;
+      state.loaded = true;
+      state.nextPage = page + 1;
+
+      let lastPage = Number(pagination.last_page);
+      state.hasMore = Boolean(lastPage && page < lastPage);
+      if (!items.length) {
+        state.hasMore = false;
+      }
+
+      let total = pagination.total_hits ?? state.totalLoaded;
+      let countLabel = formatResultCount(total, Boolean(pagination.max_hits));
+      setBadge(countElement, countLabel, state.totalLoaded > 0 ? 'enabled' : 'idle');
+
+      if (!state.totalLoaded) {
+        setListState('No items found.', 'idle');
+      } else if (state.hasMore) {
+        setListState('Scroll for more.', 'idle');
+      } else {
+        setListState('End of list.', 'success');
+      }
+    } catch (error) {
+      if (state.totalLoaded > 0 && error === 'Not found.') {
+        state.hasMore = false;
+        setListState('End of list.', 'success');
+      } else {
+        state.hasMore = false;
+        setListState(error?.message ?? error, 'error');
+      }
+    } finally {
+      state.loading = false;
+    }
+  }
+
+  let observer = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) {
+      loadNextPage();
+    }
+  });
+  observer.observe(sentinel);
+
+  return {
+    loadNextPage,
+    reset,
+    get loaded() {
+      return state.loaded;
+    },
+  };
+}
+
 function setConnectionCollapsed(collapsed) {
   connectionCollapsed = collapsed;
   connectionCard.dataset.collapsed = collapsed ? 'true' : 'false';
 }
 
-function setConnectionStatus({ badge, badgeState, hint, hintState, error = null, collapsed = null }) {
+function setConnectionStatus({
+  badge,
+  badgeState,
+  hint,
+  hintState,
+  error = null,
+  collapsed = null,
+}) {
   setBadge(connectionState, badge, badgeState);
   setHint(hint, hintState);
   if (error) {
@@ -143,8 +417,87 @@ function formatAccessUrl(access) {
 }
 
 function addUrl(access) {
-  taUrlLink.setAttribute('href', formatAccessUrl(access));
+  let baseUrl = `${formatAccessUrl(access).replace(/\/$/, '')}/`;
+  taUrlLink.setAttribute('href', baseUrl);
+  downloadsLink.setAttribute('href', new URL('downloads/', baseUrl).href);
+  archiveHomeLink.setAttribute('href', baseUrl);
   updateConnectionSummary(access);
+}
+
+function dateKey(dateObj) {
+  let year = dateObj.getFullYear();
+  let month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  let day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function applyArchiveSearch() {
+  archivePager.reset();
+  if (!document.getElementById('archive-panel').hidden) {
+    archivePager.loadNextPage();
+  }
+}
+
+function setArchiveSearchVisibility(visible) {
+  archiveSearchVisible = visible;
+  archiveSearchWrap.hidden = !visible;
+  archiveSearchWrap.style.display = visible ? 'flex' : 'none';
+  archiveSearchToggle.setAttribute('aria-expanded', visible ? 'true' : 'false');
+  archiveSearchToggle.dataset.state = visible ? 'enabled' : 'idle';
+  if (visible) {
+    archiveSearchInput.focus();
+  }
+}
+
+function clearArchiveSearch() {
+  let previous = archiveSearchTerm;
+  archiveSearchInput.value = '';
+  archiveSearchTerm = '';
+  if (archiveSearchDebounceTimer) {
+    clearTimeout(archiveSearchDebounceTimer);
+    archiveSearchDebounceTimer = null;
+  }
+  if (previous) {
+    applyArchiveSearch();
+  }
+  persistPopupUiState();
+}
+
+function queueArchiveSearchUpdate(value) {
+  let next = value.trim();
+  if (next === archiveSearchTerm) return;
+  if (archiveSearchDebounceTimer) {
+    clearTimeout(archiveSearchDebounceTimer);
+  }
+  archiveSearchDebounceTimer = window.setTimeout(() => {
+    archiveSearchTerm = next;
+    applyArchiveSearch();
+    persistPopupUiState();
+  }, 280);
+}
+
+async function loadArchiveStats() {
+  if (archiveStatsLoaded) return;
+
+  archiveStats.textContent = 'Stats loading...';
+  try {
+    let hist = await sendMessage({ type: 'getDownloadHistStats' });
+    if (!Array.isArray(hist)) {
+      throw new Error('Stats unavailable');
+    }
+
+    let yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    let yesterdayKey = dateKey(yesterday);
+    let yesterdayBucket = hist.find(item => item.date === yesterdayKey);
+    let yesterdayCount = yesterdayBucket?.count ?? 0;
+    archiveStats.textContent = `Added yesterday: ${yesterdayCount}`;
+    archiveStats.dataset.state = 'success';
+    archiveStatsLoaded = true;
+  } catch (error) {
+    archiveStats.textContent = error?.message ?? 'Stats unavailable';
+    archiveStats.dataset.state = 'error';
+  }
 }
 
 function buildAccessFromInputs() {
@@ -196,6 +549,7 @@ async function commitConnectionSettings() {
     });
     addUrl(payload.access);
     updateConnectionSummary(payload.access);
+    resetApiLists();
 
     if (payload.access.url && payload.access.apiKey) {
       return await pingBackend();
@@ -348,6 +702,161 @@ bindStoredCheckbox(autostartInput, 'autostart');
 bindStoredCheckbox(watchAutoQueueInput, 'watchAutoQueue');
 bindStoredCheckbox(likeAutoQueueInput, 'likeAutoQueue');
 
+const downloadsPager = createPagedList({
+  messageType: 'getDownloadsPage',
+  listElement: downloadsList,
+  stateElement: downloadsState,
+  countElement: downloadsCount,
+  sentinel: downloadsSentinel,
+  renderItem: renderDownloadItem,
+});
+
+const archivePager = createPagedList({
+  messageType: 'getArchiveVideosPage',
+  listElement: archiveList,
+  stateElement: archiveState,
+  countElement: archiveCount,
+  sentinel: archiveSentinel,
+  renderItem: renderArchiveItem,
+  buildRequest: page => ({
+    type: 'getArchiveVideosPage',
+    page,
+    query: archiveSearchTerm,
+    sort: archiveSortBy,
+    order: archiveSortOrderValue,
+    videoType: archiveTypeValue,
+  }),
+});
+
+function showTab(panelId) {
+  activePanelId = panelId;
+  for (let button of tabButtons) {
+    button.setAttribute('aria-selected', button.dataset.tabTarget === panelId ? 'true' : 'false');
+  }
+
+  for (let panel of tabPanels) {
+    panel.hidden = panel.id !== panelId;
+  }
+
+  if (panelId === 'downloads-panel' && !downloadsPager.loaded) {
+    downloadsPager.loadNextPage();
+  }
+  if (panelId === 'downloads-panel') {
+    loadDownloadsStats();
+  }
+
+  if (panelId === 'archive-panel' && !archivePager.loaded) {
+    archivePager.loadNextPage();
+  }
+  if (panelId === 'archive-panel') {
+    loadArchiveStats();
+  }
+  persistPopupUiState();
+}
+
+function reloadDownloadsList() {
+  downloadsPager.reset();
+  downloadsStatsLoaded = false;
+  if (!document.getElementById('downloads-panel').hidden) {
+    downloadsPager.loadNextPage();
+    loadDownloadsStats();
+  }
+}
+
+function reloadArchiveList() {
+  archivePager.reset();
+  archiveStatsLoaded = false;
+  archiveStats.dataset.state = 'idle';
+  archiveStats.textContent = 'Stats loading...';
+  if (!document.getElementById('archive-panel').hidden) {
+    archivePager.loadNextPage();
+    loadArchiveStats();
+  }
+}
+
+function resetApiLists() {
+  downloadsPager.reset();
+  archivePager.reset();
+  archiveStatsLoaded = false;
+  downloadsStatsLoaded = false;
+  archiveStats.dataset.state = 'idle';
+  archiveStats.textContent = 'Stats loading...';
+
+  if (!document.getElementById('downloads-panel').hidden) {
+    downloadsPager.loadNextPage();
+    loadDownloadsStats();
+  }
+
+  if (!document.getElementById('archive-panel').hidden) {
+    archivePager.loadNextPage();
+    loadArchiveStats();
+  }
+}
+
+function hasConfiguredAccess(access) {
+  return Boolean(access?.url && access?.apiKey);
+}
+
+for (let button of tabButtons) {
+  button.addEventListener('click', () => {
+    showTab(button.dataset.tabTarget);
+  });
+}
+
+archiveSearchToggle.addEventListener('click', () => {
+  if (archiveSearchVisible) {
+    clearArchiveSearch();
+    setArchiveSearchVisibility(false);
+    return;
+  }
+  setArchiveSearchVisibility(true);
+  persistPopupUiState();
+});
+
+archiveSearchClose.addEventListener('click', () => {
+  clearArchiveSearch();
+  setArchiveSearchVisibility(false);
+  persistPopupUiState();
+});
+
+archiveSearchInput.addEventListener('input', event => {
+  queueArchiveSearchUpdate(event.target.value || '');
+});
+
+archiveSort.addEventListener('change', event => {
+  let selected = String(event.target.value || 'downloaded:desc');
+  let [sortBy, sortOrder] = selected.split(':');
+  archiveSortBy = sortBy === 'published' ? 'published' : 'downloaded';
+  archiveSortOrderValue = sortOrder === 'asc' ? 'asc' : 'desc';
+  applyArchiveSearch();
+  persistPopupUiState();
+});
+
+archiveType.addEventListener('change', event => {
+  let value = String(event.target.value || '');
+  archiveTypeValue =
+    value === 'videos' || value === 'shorts' || value === 'streams' ? value : '';
+  applyArchiveSearch();
+  persistPopupUiState();
+});
+
+archiveSearchInput.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    clearArchiveSearch();
+    setArchiveSearchVisibility(false);
+    persistPopupUiState();
+  }
+});
+
+downloadsRefresh.addEventListener('click', () => {
+  reloadDownloadsList();
+});
+
+archiveRefresh.addEventListener('click', () => {
+  reloadArchiveList();
+});
+
 // send ping message to TA backend
 async function pingBackend() {
   setConnectionStatus({
@@ -424,8 +933,21 @@ function setCookieState() {
 // fill in form
 document.addEventListener('DOMContentLoaded', async () => {
   setExtensionVersion();
+  setArchiveSearchVisibility(false);
 
   async function onGot(item) {
+    let savedUiState = normalizeArchiveUiState(item[popupUiStateKey]);
+    archiveSortBy = savedUiState.archiveSortBy;
+    archiveSortOrderValue = savedUiState.archiveSortOrderValue;
+    archiveSort.value = `${archiveSortBy}:${archiveSortOrderValue}`;
+    archiveTypeValue = savedUiState.archiveTypeValue;
+    archiveType.value = archiveTypeValue;
+    archiveSearchTerm = savedUiState.archiveSearchTerm;
+    archiveSearchInput.value = archiveSearchTerm;
+    if (savedUiState.archiveSearchVisible) {
+      setArchiveSearchVisibility(true);
+    }
+
     let fullUrl = item.popupFullUrl;
 
     if (!fullUrl && item.access) {
@@ -450,25 +972,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         collapsed: false,
       });
       updateConnectionSummary(null);
+      showTab('settings-panel');
       return;
     }
 
     addUrl(item.access);
     updateConnectionSummary(item.access);
+    if (!hasConfiguredAccess(item.access)) {
+      showTab('settings-panel');
+    } else {
+      let nextPanel = savedUiState.activePanelId;
+      if (
+        nextPanel !== 'downloads-panel' &&
+        nextPanel !== 'archive-panel' &&
+        nextPanel !== 'settings-panel'
+      ) {
+        nextPanel = 'downloads-panel';
+      }
+      showTab(nextPanel || 'downloads-panel');
+    }
     pingBackend();
     setCookieState();
   }
 
-  let initialState = await storageGet(['access', 'popupFullUrl', 'popupApiKey']);
+  let initialState = await storageGet(['access', 'popupFullUrl', 'popupApiKey', popupUiStateKey]);
   await onGot(initialState);
   browserType.storage.local.get('continuousSync', function (result) {
-    hydrateStoredCheckbox(result, 'continuousSync', continuousSyncInput, 'continuous cookie sync not set');
+    hydrateStoredCheckbox(
+      result,
+      'continuousSync',
+      continuousSyncInput,
+      'continuous cookie sync not set'
+    );
   });
   browserType.storage.local.get('autostart', function (result) {
     hydrateStoredCheckbox(result, 'autostart', autostartInput, 'autostart not set');
   });
   browserType.storage.local.get('watchAutoQueue', function (result) {
-    hydrateStoredCheckbox(result, 'watchAutoQueue', watchAutoQueueInput, 'watch auto queue not set');
+    hydrateStoredCheckbox(
+      result,
+      'watchAutoQueue',
+      watchAutoQueueInput,
+      'watch auto queue not set'
+    );
   });
   browserType.storage.local.get('likeAutoQueue', function (result) {
     hydrateStoredCheckbox(result, 'likeAutoQueue', likeAutoQueueInput, 'like auto queue not set');
