@@ -23,6 +23,9 @@
             "js": ["script.js"]
         }
     ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'"
+    },
     "background": {
         "scripts": ["background.js"]
     }

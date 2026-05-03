@@ -34,7 +34,6 @@ async function sendGet(path) {
       Accept: 'application/json',
       'Content-Type': 'application/json',
       Authorization: 'Token ' + access.apiKey,
-      mode: 'no-cors',
     },
   });
 
@@ -56,7 +55,6 @@ async function sendData(path, payload, method) {
         Accept: 'application/json',
         'Content-Type': 'application/json',
         Authorization: 'Token ' + access.apiKey,
-        mode: 'no-cors',
       },
       body: JSON.stringify(payload),
     });
