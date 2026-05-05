@@ -88,6 +88,109 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
 const defaultIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>minus-thick</title><path d="M20 14H4V10H20" /></svg>`;
 const queuedIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>clock-outline</title><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm.5-13h-1v6l5.2 3.1.5-.9-4.7-2.7Z"/></svg>`;
 
+const taButtonDefaultBackground = 'rgba(3, 21, 33, 0.82)';
+const taButtonHoverBackground = 'rgba(39, 82, 105, 0.98)';
+const taButtonBorder = 'rgba(151, 212, 200, 0.26)';
+const taButtonDivider = 'rgba(151, 212, 200, 0.2)';
+const taButtonDefaultForeground = '#ecfff9';
+const taButtonHoverForeground = '#52e0bf';
+const taButtonIconDefaultFilter = 'invert()';
+const taButtonIconHoverFilter =
+  'invert(84%) sepia(47%) saturate(541%) hue-rotate(108deg) brightness(95%) contrast(86%)';
+const taButtonZIndex = 999999;
+
+function getDownloadButtonIconElement(button) {
+  return button.querySelector('span');
+}
+
+function applyDownloadButtonDefaultStyle(button) {
+  Object.assign(button.style, {
+    backgroundColor: taButtonDefaultBackground,
+    borderColor: taButtonBorder,
+    boxShadow: 'none',
+    color: taButtonDefaultForeground,
+  });
+  let icon = getDownloadButtonIconElement(button);
+  if (icon) icon.style.filter = taButtonIconDefaultFilter;
+}
+
+function applyDownloadButtonHoverStyle(button) {
+  Object.assign(button.style, {
+    backgroundColor: taButtonHoverBackground,
+    borderColor: taButtonBorder,
+    boxShadow: 'none',
+    color: taButtonHoverForeground,
+  });
+  let icon = getDownloadButtonIconElement(button);
+  if (icon) icon.style.filter = taButtonIconHoverFilter;
+}
+
+function attachDownloadButtonHoverStyle(button) {
+  button.addEventListener('mouseenter', () => applyDownloadButtonHoverStyle(button));
+  button.addEventListener('mouseleave', () => applyDownloadButtonDefaultStyle(button));
+}
+
+function stopYouTubeThumbnailEvent(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+}
+
+function captureDownloadButtonPointerEvents(element) {
+  ['pointerdown', 'mousedown', 'mouseup', 'touchstart', 'touchend'].forEach(eventName => {
+    element.addEventListener(eventName, stopYouTubeThumbnailEvent, true);
+  });
+}
+
+function attachSegmentHoverStyle(segment) {
+  segment.addEventListener('mouseenter', () => {
+    segment.style.backgroundColor = taButtonHoverBackground;
+    segment.style.color = taButtonHoverForeground;
+  });
+  segment.addEventListener('mouseleave', () => {
+    segment.style.backgroundColor = 'transparent';
+    segment.style.color = 'inherit';
+  });
+}
+
+function styleChannelDownloadSegmentIcon(button) {
+  if (!button.classList.contains('ta-channel-download-segment')) return;
+  let iconWrapper = button.querySelector('.ta-channel-download-icon-wrap');
+  if (!iconWrapper) {
+    let icon = button.querySelector('svg');
+    if (!icon) return;
+    iconWrapper = document.createElement('span');
+    iconWrapper.classList.add('ta-channel-download-icon-wrap');
+    icon.replaceWith(iconWrapper);
+    iconWrapper.appendChild(icon);
+  }
+  Object.assign(iconWrapper.style, {
+    width: '14px',
+    height: '14px',
+    maxWidth: '14px',
+    maxHeight: '14px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: '0 0 14px',
+    overflow: 'hidden',
+    color: 'currentColor',
+  });
+  let icon = iconWrapper.querySelector('svg');
+  if (!icon) return;
+  icon.removeAttribute('width');
+  icon.removeAttribute('height');
+  Object.assign(icon.style, {
+    width: '16px',
+    height: '16px',
+    maxWidth: '16px',
+    maxHeight: '16px',
+    display: 'block',
+    flex: '0 0 16px',
+    fill: 'currentColor',
+  });
+}
+
 let browserType = getBrowser();
 const watchAutoQueueRatioThreshold = 0.2;
 const watchAutoQueueMinSeconds = 60;
@@ -142,32 +245,32 @@ const videoButtonVariantStyles = {
     position: 'absolute',
     top: 0,
     right: '32px',
-    zIndex: 2,
+    zIndex: taButtonZIndex,
   },
   'lockup-menu-below': {
     position: 'absolute',
     top: '32px',
     right: '-10px',
-    zIndex: 2,
+    zIndex: taButtonZIndex,
   },
   'playlist-menu-below': {
     position: 'relative',
     top: 'auto',
     right: 'auto',
     marginTop: '8px',
-    zIndex: 2,
+    zIndex: taButtonZIndex,
   },
   default: {
     position: 'absolute',
     top: 0,
     right: '32px',
-    zIndex: 2,
+    zIndex: taButtonZIndex,
   },
   'shorts-grid': {
     position: 'absolute',
     top: '8px',
     right: '8px',
-    zIndex: 2,
+    zIndex: taButtonZIndex,
   },
 };
 
@@ -632,8 +735,8 @@ function isElementVisible(element) {
 }
 
 function ensureTALinks() {
-  ensureThumbnailFallbackButtons();
   ensureThumbnailHoverOverlayButtons();
+  ensureShortsThumbnailFallbackButtons();
 
   let shortsContainer = getShortsContainer();
   if (shortsContainer) {
@@ -702,14 +805,14 @@ function ensureThumbnailHoverOverlayButtons() {
   }
 }
 
-function ensureThumbnailFallbackButtons() {
+function ensureShortsThumbnailFallbackButtons() {
   let thumbnails = document.querySelectorAll('yt-thumbnail-view-model');
   for (let thumbnail of thumbnails) {
     if (thumbnail.querySelector('yt-thumbnail-hover-overlay-toggle-actions-view-model')) continue;
     if (thumbnail.querySelector('.ta-button')) continue;
 
-     let lockupHost = thumbnail.closest('.ytLockupViewModelHost');
-     let hasCompactMenuPlacement = Boolean(
+    let lockupHost = thumbnail.closest('.ytLockupViewModelHost');
+    let hasCompactMenuPlacement = Boolean(
       lockupHost?.querySelector(
         'yt-lockup-metadata-view-model.ytLockupMetadataViewModelCompact .ytLockupMetadataViewModelMenuButton'
       )
@@ -718,6 +821,7 @@ function ensureThumbnailFallbackButtons() {
 
     let videoId = getVideoIdForThumbnailViewModel(thumbnail);
     if (!videoId) continue;
+    if (!isShortsVideoHref(getVideoHrefForThumbnailViewModel(thumbnail))) continue;
 
     if (!thumbnail.style.position) {
       thumbnail.style.position = 'relative';
@@ -727,12 +831,13 @@ function ensureThumbnailFallbackButtons() {
       title: `TA download video: ${videoId}`,
       size: 32,
       iconSize: 16,
+      asButton: true,
     });
     Object.assign(button.style, {
       position: 'absolute',
       top: '8px',
       right: '8px',
-      zIndex: 3,
+      zIndex: taButtonZIndex,
     });
 
     thumbnail.appendChild(button);
@@ -748,6 +853,9 @@ function ensureThumbnailHoverOverlayButton(overlay) {
 
   let actionRow = document.createElement('div');
   actionRow.className = 'ytThumbnailHoverOverlayToggleActionsViewModelButton';
+  actionRow.style.zIndex = taButtonZIndex;
+  actionRow.style.pointerEvents = 'auto';
+  captureDownloadButtonPointerEvents(actionRow);
 
   let taButton = buildHoverOverlayVideoButton(videoId);
   actionRow.appendChild(taButton);
@@ -780,11 +888,7 @@ function getVideoIdForHoverOverlay(overlay) {
 }
 
 function getVideoIdForThumbnailViewModel(thumbnail) {
-  let cardRoot = thumbnail.closest(videoCardRootSelector);
-  if (!cardRoot) return null;
-
-  let link = cardRoot.querySelector(videoLinkSelector);
-  let href = link?.getAttribute('href');
+  let href = getVideoHrefForThumbnailViewModel(thumbnail);
   if (!href) return null;
 
   try {
@@ -802,11 +906,29 @@ function getVideoIdForThumbnailViewModel(thumbnail) {
   return null;
 }
 
+function getVideoHrefForThumbnailViewModel(thumbnail) {
+  let cardRoot = thumbnail.closest(videoCardRootSelector);
+  if (!cardRoot) return null;
+
+  let link = cardRoot.querySelector(videoLinkSelector);
+  return link?.getAttribute('href') || null;
+}
+
+function isShortsVideoHref(href) {
+  if (!href) return false;
+  try {
+    return new URL(href, location.href).pathname.startsWith('/shorts/');
+  } catch {
+    return false;
+  }
+}
+
 function buildHoverOverlayVideoButton(videoId) {
   return createRoundedDownloadButton(videoId, {
     title: `TA download video: ${videoId}`,
     size: 32,
     iconSize: 16,
+    asButton: true,
   });
 }
 
@@ -925,14 +1047,17 @@ function buildChannelButtonDiv() {
   buttonDiv.classList.add('ta-channel-button');
   let isWatchPage = window.location.pathname.startsWith('/watch');
   Object.assign(buttonDiv.style, {
-    display: 'flex',
-    alignItems: 'center',
-    backgroundColor: '#00202f',
-    color: '#fff',
+    display: 'inline-flex',
+    alignItems: 'stretch',
+    backgroundColor: taButtonDefaultBackground,
+    border: `1px solid ${taButtonBorder}`,
+    boxShadow: 'none',
+    color: taButtonDefaultForeground,
     fontSize: '14px',
-    padding: '5px',
-    borderRadius: '18px',
+    padding: '0',
+    borderRadius: '9999px',
     marginLeft: isWatchPage ? '8px' : '0',
+    overflow: 'hidden',
   });
   return buttonDiv;
 }
@@ -958,9 +1083,18 @@ function buildChannelSubButton(channelHandle) {
     e.stopPropagation();
   });
   Object.assign(channelSubButton.style, {
-    padding: '5px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '86px',
+    height: '34px',
+    padding: '0 12px',
+    backgroundColor: 'transparent',
     cursor: 'pointer',
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
   });
+  attachSegmentHoverStyle(channelSubButton);
   checkChannelSubscribed(channelSubButton);
 
   return channelSubButton;
@@ -990,13 +1124,19 @@ function checkChannelSubscribed(channelSubButton) {
 
 function buildSpacer() {
   let spacer = document.createElement('span');
-  spacer.innerText = '|';
+  spacer.setAttribute('aria-hidden', 'true');
+  Object.assign(spacer.style, {
+    alignSelf: 'stretch',
+    width: '1px',
+    backgroundColor: taButtonDivider,
+  });
 
   return spacer;
 }
 
 function buildChannelDownloadButton() {
   let channelDownloadButton = document.createElement('span');
+  channelDownloadButton.classList.add('ta-channel-download-segment');
   let currentLocation = window.location.href;
   let urlObj = new URL(currentLocation);
 
@@ -1006,13 +1146,13 @@ function buildChannelDownloadButton() {
     channelDownloadButton.setAttribute('data-type', 'video');
     channelDownloadButton.setAttribute('data-id', videoId);
     channelDownloadButton.title = `TA download video: ${videoId}`;
-    checkVideoExists(channelDownloadButton);
   } else {
     channelDownloadButton.setAttribute('data-id', currentLocation);
     channelDownloadButton.setAttribute('data-type', 'channel');
     channelDownloadButton.title = `TA download channel ${currentLocation}`;
   }
   channelDownloadButton.innerHTML = downloadIcon;
+  styleChannelDownloadSegmentIcon(channelDownloadButton);
   channelDownloadButton.addEventListener('click', e => {
     e.preventDefault();
     console.log(`download: ${currentLocation}`);
@@ -1020,11 +1160,19 @@ function buildChannelDownloadButton() {
     e.stopPropagation();
   });
   Object.assign(channelDownloadButton.style, {
-    filter: 'invert()',
-    width: '20px',
-    padding: '0 5px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '38px',
+    height: '34px',
+    padding: '0',
+    backgroundColor: 'transparent',
     cursor: 'pointer',
   });
+  attachSegmentHoverStyle(channelDownloadButton);
+  if (channelDownloadButton.dataset.type === 'video') {
+    checkVideoExists(channelDownloadButton);
+  }
 
   return channelDownloadButton;
 }
@@ -1183,14 +1331,19 @@ function createRoundedDownloadButton(videoId, options = {}) {
     size = 32,
     iconSize = 16,
     ghostReveal = false,
+    asButton = false,
   } = options;
 
-  let dlButton = document.createElement('a');
+  let dlButton = document.createElement(asButton ? 'button' : 'a');
   dlButton.classList.add('ta-button', 'ta-hover-action');
   if (ghostReveal) {
     dlButton.classList.add('ta-hover-reveal');
   }
-  dlButton.href = '#';
+  if (asButton) {
+    dlButton.type = 'button';
+  } else {
+    dlButton.href = '#';
+  }
   dlButton.setAttribute('data-id', videoId);
   dlButton.setAttribute('data-type', 'video');
   dlButton.title = title;
@@ -1200,16 +1353,17 @@ function createRoundedDownloadButton(videoId, options = {}) {
     alignItems: 'center',
     justifyContent: 'center',
     textDecoration: 'none',
+    boxSizing: 'border-box',
+    appearance: 'none',
     width: `${size}px`,
     height: `${size}px`,
     borderRadius: '9999px',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
-    color: '#fff',
+    backgroundColor: taButtonDefaultBackground,
+    border: `1px solid ${taButtonBorder}`,
+    boxShadow: 'none',
+    color: taButtonDefaultForeground,
     cursor: 'pointer',
     opacity: 1,
-    transition: 'background-color 120ms ease, box-shadow 120ms ease, border-color 120ms ease',
   });
 
   if (ghostReveal) {
@@ -1219,7 +1373,6 @@ function createRoundedDownloadButton(videoId, options = {}) {
       boxShadow: 'none',
       opacity: 0,
       pointerEvents: 'none',
-      transition: 'opacity 100ms ease, background-color 120ms ease, box-shadow 120ms ease',
     });
   }
 
@@ -1233,21 +1386,16 @@ function createRoundedDownloadButton(videoId, options = {}) {
   });
   dlButton.appendChild(dlIcon);
 
-  dlButton.addEventListener('mouseenter', () => {
-    dlButton.style.backgroundColor = 'rgba(0, 32, 47, 0.88)';
-    dlButton.style.borderColor = 'rgba(255, 255, 255, 0.35)';
-    dlButton.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.35)';
-  });
-  dlButton.addEventListener('mouseleave', () => {
-    dlButton.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
-    dlButton.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-    dlButton.style.boxShadow = '0 1px 4px rgba(0, 0, 0, 0.3)';
-  });
+  captureDownloadButtonPointerEvents(dlButton);
+  attachDownloadButtonHoverStyle(dlButton);
+  if (ghostReveal) {
+    dlButton.style.backgroundColor = 'transparent';
+    dlButton.style.borderColor = 'transparent';
+  }
 
   dlButton.addEventListener('click', e => {
-    e.preventDefault();
+    stopYouTubeThumbnailEvent(e);
     sendDownload(dlButton);
-    e.stopPropagation();
   });
 
   return dlButton;
@@ -1281,6 +1429,7 @@ function buildVideoButton(titleContainer, options = {}) {
       size: roundedSize,
       iconSize: roundedIconSize,
       ghostReveal: variant === 'lockup-menu-below' || variant === 'playlist-menu-below',
+      asButton: variant === 'thumbnail-hover-actions',
     });
     Object.assign(roundedButton.style, videoButtonVariantStyles[variant] || {});
     return roundedButton;
@@ -1289,8 +1438,11 @@ function buildVideoButton(titleContainer, options = {}) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#00202f',
-      color: '#fff',
+      boxSizing: 'border-box',
+      backgroundColor: taButtonDefaultBackground,
+      border: `1px solid ${taButtonBorder}`,
+      boxShadow: 'none',
+      color: taButtonDefaultForeground,
       fontSize: '1.4rem',
       textDecoration: 'none',
       borderRadius: '8px',
@@ -1312,6 +1464,7 @@ function buildVideoButton(titleContainer, options = {}) {
   });
 
   dlButton.appendChild(dlIcon);
+  attachDownloadButtonHoverStyle(dlButton);
 
   dlButton.addEventListener('click', e => {
     e.preventDefault();
@@ -1408,8 +1561,7 @@ function prepareVideoButtonContainer(container, taButton) {
     hoverHost.addEventListener('mouseenter', () => {
       taButton.style.opacity = 1;
       taButton.style.pointerEvents = 'auto';
-      taButton.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
-      taButton.style.boxShadow = 'rgba(0, 0, 0, 0.3) 0px 1px 4px';
+      applyDownloadButtonDefaultStyle(taButton);
       if (!taButton.isChecked) {
         checkVideoExists(taButton);
       }
@@ -1418,6 +1570,7 @@ function prepareVideoButtonContainer(container, taButton) {
       taButton.style.opacity = 0;
       taButton.style.pointerEvents = 'none';
       taButton.style.backgroundColor = 'transparent';
+      taButton.style.borderColor = 'transparent';
       taButton.style.boxShadow = 'none';
     });
     hoverHost.taHoverRevealListener = true;
@@ -1530,15 +1683,15 @@ function buildShortsButton() {
     width: '48px',
     height: '48px',
     borderRadius: '50%',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    boxShadow: 'rgba(0, 0, 0, 0.3) 0px 1px 4px',
-    color: 'rgb(255, 255, 255)',
+    boxSizing: 'border-box',
+    border: `1px solid ${taButtonBorder}`,
+    backgroundColor: taButtonDefaultBackground,
+    boxShadow: 'none',
+    color: taButtonDefaultForeground,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'background-color 120ms, box-shadow 120ms, border-color 120ms',
   });
 
   let iconSpan = document.createElement('span');
@@ -1551,16 +1704,7 @@ function buildShortsButton() {
   });
   btn.appendChild(iconSpan);
 
-  btn.addEventListener('mouseenter', () => {
-    btn.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
-    btn.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-    btn.style.boxShadow = 'rgba(0, 0, 0, 0.35) 0px 2px 8px';
-  });
-  btn.addEventListener('mouseleave', () => {
-    btn.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
-    btn.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-    btn.style.boxShadow = 'rgba(0, 0, 0, 0.3) 0px 1px 4px';
-  });
+  attachDownloadButtonHoverStyle(btn);
 
   btn.addEventListener('click', e => {
     e.preventDefault();
@@ -1626,6 +1770,7 @@ function buttonSuccess(button) {
 function setButtonDefaultState(button) {
   let buttonSpan = button.querySelector('span') || button;
   buttonSpan.innerHTML = downloadIcon;
+  styleChannelDownloadSegmentIcon(button);
   buttonSpan.title = 'Queue download';
   button.dataset.taState = 'download';
   delete button.dataset.openUrl;
@@ -1634,6 +1779,7 @@ function setButtonDefaultState(button) {
 function setButtonQueuedState(button) {
   let buttonSpan = button.querySelector('span') || button;
   buttonSpan.innerHTML = queuedIcon;
+  styleChannelDownloadSegmentIcon(button);
   buttonSpan.title = 'Queued';
   button.dataset.taState = 'queued';
   delete button.dataset.openUrl;
@@ -1642,6 +1788,7 @@ function setButtonQueuedState(button) {
 function setButtonOpenState(button, openUrl) {
   let buttonSpan = button.querySelector('span') || button;
   buttonSpan.innerHTML = checkmarkIcon;
+  styleChannelDownloadSegmentIcon(button);
   buttonSpan.title = 'Open in TA';
   button.dataset.taState = 'open';
   button.dataset.openUrl = openUrl;
@@ -1702,6 +1849,7 @@ function cleanButtons() {
 }
 
 let oldHref = document.location.href;
+let navigationRefreshTimer = null;
 
 function throttled(callback, time) {
   let throttleBlock = false;
@@ -1729,11 +1877,7 @@ function handleHoverOverlayPointer(event) {
 let observer = new MutationObserver(list => {
   const currentHref = document.location.href;
   if (currentHref !== oldHref) {
-    cleanButtons();
-    oldHref = currentHref;
-    resetWatchProgressState(getCurrentPlaybackVideoId());
-    resetLikeQueueState(getCurrentPlaybackVideoId());
-    attachWatchProgressListeners();
+    scheduleNavigationRefresh();
   }
   if (list.some(i => i.type === 'childList' && i.addedNodes.length > 0)) {
     ensureTALinks();
@@ -1744,9 +1888,24 @@ let observer = new MutationObserver(list => {
 
 observer.observe(document.body, { attributes: false, childList: true, subtree: true });
 
+function scheduleNavigationRefresh(delay = 0) {
+  if (navigationRefreshTimer) {
+    window.clearTimeout(navigationRefreshTimer);
+  }
+  navigationRefreshTimer = window.setTimeout(() => {
+    navigationRefreshTimer = null;
+    handleHistoryNavigationRefresh();
+  }, delay);
+}
+
 function handleHistoryNavigationRefresh() {
+  const currentHref = document.location.href;
+  if (currentHref === oldHref) {
+    ensureTALinks();
+    return;
+  }
   cleanButtons();
-  oldHref = document.location.href;
+  oldHref = currentHref;
   resetWatchProgressState(getCurrentPlaybackVideoId());
   resetLikeQueueState(getCurrentPlaybackVideoId());
   ensureTALinks();
@@ -1755,13 +1914,17 @@ function handleHistoryNavigationRefresh() {
 }
 
 window.addEventListener('popstate', () => {
-  window.setTimeout(handleHistoryNavigationRefresh, 0);
+  scheduleNavigationRefresh();
 });
 
 window.addEventListener('pageshow', event => {
   if (event.persisted) {
-    window.setTimeout(handleHistoryNavigationRefresh, 0);
+    scheduleNavigationRefresh();
   }
+});
+
+document.addEventListener('yt-navigate-finish', () => {
+  scheduleNavigationRefresh();
 });
 
 document.addEventListener(

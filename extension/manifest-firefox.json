@@ -29,6 +29,6 @@
         "extension_pages": "script-src 'self'"
     },
     "background": {
-        "scripts": ["background.js"]
+        "service_worker": "background.js"
     }
 }

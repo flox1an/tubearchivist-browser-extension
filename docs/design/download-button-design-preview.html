@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TubeArchivist Download Button Vorschlaege</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-top: #06283d;
+      --bg-bottom: #031521;
+      --surface: rgba(8, 41, 58, 0.86);
+      --surface-strong: rgba(12, 56, 77, 0.96);
+      --surface-border: rgba(151, 212, 200, 0.16);
+      --text-main: #ecfff9;
+      --text-muted: #9ec8c0;
+      --accent: #3cc6a8;
+      --accent-strong: #52e0bf;
+      --control-bg: rgba(2, 17, 26, 0.68);
+      --button-bg: rgba(3, 21, 33, 0.82);
+      --button-hover-blue: rgba(39, 82, 105, 0.98);
+      --button-border: rgba(151, 212, 200, 0.26);
+      --button-hover-bg: rgba(12, 56, 77, 0.96);
+      --button-hover-border: rgba(82, 224, 191, 0.52);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(60, 198, 168, 0.22), transparent 34%),
+        linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+      color: var(--text-main);
+    }
+
+    main {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0;
+      display: grid;
+      gap: 18px;
+    }
+
+    h1,
+    h2,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 1rem;
+      line-height: 1.2;
+    }
+
+    p {
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .intro {
+      display: grid;
+      gap: 8px;
+      max-width: 740px;
+    }
+
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .wide-panel {
+      grid-column: 1 / -1;
+    }
+
+    .panel {
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+      min-height: 260px;
+    }
+
+    .panel-head {
+      display: grid;
+      gap: 5px;
+    }
+
+    .youtube-row {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.24);
+    }
+
+    .thumb {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      border-radius: 8px;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.3)),
+        linear-gradient(45deg, #292929, #111);
+    }
+
+    .thumb::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      height: 42%;
+      background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72));
+    }
+
+    .title-line {
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(236, 255, 249, 0.75);
+    }
+
+    .meta-line {
+      width: 58%;
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(158, 200, 192, 0.5);
+    }
+
+    .button-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .button-sample {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      cursor: pointer;
+      color: var(--text-main);
+      background: var(--button-bg);
+      border: 1px solid var(--button-border);
+      box-shadow: none;
+      transition:
+        background 140ms ease,
+        border-color 140ms ease,
+        color 140ms ease;
+    }
+
+    .button-sample:hover,
+    .button-sample.is-hover {
+      color: var(--accent-strong);
+      background: var(--button-hover-bg);
+      border-color: var(--button-hover-border);
+      box-shadow: none;
+    }
+
+    .button-sample svg {
+      width: 58%;
+      height: 58%;
+      fill: currentColor;
+    }
+
+    .round {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+    }
+
+    .shorts {
+      width: 48px;
+      height: 48px;
+      border-radius: 999px;
+    }
+
+    .legacy {
+      width: 32px;
+      height: 30px;
+      border-radius: 8px;
+    }
+
+    .legacy.current {
+      background: #00202f;
+      border-color: transparent;
+      box-shadow: none;
+    }
+
+    .ghost {
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+    }
+
+    .suggestion-list {
+      display: grid;
+      gap: 10px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .suggestion-list li {
+      display: grid;
+      gap: 4px;
+      padding: 12px;
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .label {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+    }
+
+    .states {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .channel-layout {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+      gap: 14px;
+    }
+
+    .channel-demo {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.24);
+    }
+
+    .channel-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #666, #222);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      flex: 0 0 auto;
+    }
+
+    .channel-copy {
+      display: grid;
+      gap: 5px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .channel-name {
+      width: 150px;
+      max-width: 100%;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(236, 255, 249, 0.78);
+    }
+
+    .channel-meta {
+      width: 96px;
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(158, 200, 192, 0.48);
+    }
+
+    .channel-control {
+      display: inline-flex;
+      align-items: stretch;
+      gap: 0;
+      width: fit-content;
+      max-width: 100%;
+      border: 1px solid var(--button-border);
+      border-radius: 999px;
+      background: var(--button-bg);
+      color: var(--text-main);
+      overflow: hidden;
+      box-shadow: none;
+    }
+
+    .subscribe-action,
+    .channel-download-action {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      box-shadow: none;
+      transition:
+        background 140ms ease,
+        color 140ms ease;
+    }
+
+    .subscribe-action {
+      min-width: 86px;
+      height: 34px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      line-height: 1;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .channel-download-action {
+      width: 38px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-left: 1px solid rgba(151, 212, 200, 0.2);
+    }
+
+    .channel-download-action svg {
+      width: 16px;
+      height: 16px;
+      max-width: 16px;
+      max-height: 16px;
+      fill: currentColor;
+    }
+
+    .subscribe-action:hover,
+    .subscribe-action.is-hover {
+      background: var(--button-hover-blue);
+      color: var(--accent-strong);
+    }
+
+    .channel-download-action:hover,
+    .channel-download-action.is-hover {
+      background: var(--button-hover-blue);
+      color: var(--accent-strong);
+    }
+
+    @media (max-width: 860px) {
+      .preview-grid,
+      .channel-layout,
+      .states {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
+    <symbol id="ta-download-icon" viewBox="0 0 500 500">
+      <rect x="237.9" y="313.5" transform="matrix(0 1 -1 0 708.0891 208.8956)" width="23.4" height="289.9"></rect>
+      <path d="M190.6,195.1c-21.7,0-42.5,0.1-63.4,0c-8.2,0-14.4,3-17.8,10.6c-3.5,7.9-1.3,14.6,4.5,20.7c40.6,42.4,81,84.9,121.6,127.3c8.9,9.3,19.1,9.4,28,0.1c40.7-42.5,81.3-85.1,122-127.7c5.6-5.9,7.6-12.6,4.3-20.3c-3.3-7.6-9.5-10.8-17.7-10.7c-19,0.1-38,0-57,0c-2,0-3.9,0-6.5,0c0-2.8,0-5,0-7.1c0-42.3,0.1-84.5,0-126.8c0-19.4-12.1-31.3-31.5-31.4c-17.9-0.1-35.8,0-53.7,0c-21.2,0-32.7,11.6-32.7,32.9c0,41.7,0,83.4,0,125.1C190.6,190,190.6,192.2,190.6,195.1z"></path>
+    </symbol>
+  </svg>
+  <main>
+    <section class="intro">
+      <h1>Download-Button Style Vorschlaege</h1>
+      <p>Suggestion-only: bestehende Icons, keine Drop Shadows, und ein deutlich ruhigerer Hover-State. Die unterschiedlichen Formen bleiben bewusst erhalten: runde Overlay-Buttons bleiben rund, Shorts bleibt groesser, und der alte 8px-Button behaelt seine kantigere Form.</p>
+    </section>
+
+    <section class="preview-grid" aria-label="Download button suggestions">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>A: Ruhiger Hover</h2>
+          <p>Kleinste Aenderung. Die Defaults bleiben nah am Bestand, Hover wird nur etwas heller und mintiger.</p>
+        </div>
+        <div class="youtube-row">
+          <div class="thumb">
+            <button class="button-sample round" style="position:absolute;top:8px;right:8px;z-index:1" aria-label="Round download">
+              <svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg>
+            </button>
+          </div>
+          <div class="title-line"></div>
+          <div class="meta-line"></div>
+          <div class="button-row">
+            <button class="button-sample legacy current" aria-label="Legacy default">
+              <svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg>
+            </button>
+            <button class="button-sample legacy current is-hover" aria-label="Legacy hover">
+              <svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg>
+            </button>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>B: Angeglichener Default</h2>
+          <p>Der alte 8px-Button bekommt dieselbe dunkle Teal-Flaeche wie die neueren Buttons, aber ohne Schatten und ohne Formwechsel.</p>
+        </div>
+        <div class="states">
+          <div class="youtube-row">
+            <span class="label">Default</span>
+            <div class="button-row">
+              <button class="button-sample round" aria-label="Round default"><svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg></button>
+              <button class="button-sample legacy" aria-label="Legacy default"><svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg></button>
+              <button class="button-sample shorts" aria-label="Shorts default"><svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg></button>
+            </div>
+          </div>
+          <div class="youtube-row">
+            <span class="label">Hover</span>
+            <div class="button-row">
+              <button class="button-sample round is-hover" aria-label="Round hover"><svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg></button>
+              <button class="button-sample legacy is-hover" aria-label="Legacy hover"><svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg></button>
+              <button class="button-sample shorts is-hover" aria-label="Shorts hover"><svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg></button>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>C: YouTube-Overlay nah</h2>
+          <p>Fuer dichte Listen und Thumbnail-Overlays. Transparent im Default, beim Hover nur eine dunkle Flaeche mit mintfarbener Kontur.</p>
+        </div>
+        <div class="youtube-row">
+          <span class="label">Ghost reveal default</span>
+          <div class="button-row">
+            <button class="button-sample round ghost" aria-label="Ghost round"><svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg></button>
+            <button class="button-sample legacy ghost" aria-label="Ghost legacy"><svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg></button>
+          </div>
+        </div>
+        <ul class="suggestion-list">
+          <li>
+            <strong>Empfohlene Richtung</strong>
+            <p>B fuer sichtbar platzierte Buttons, C fuer Hover-Reveal und Thumbnail-Overlays.</p>
+          </li>
+          <li>
+            <strong>Warum das passt</strong>
+            <p>Der Hover bleibt im Extension-Farbraum, wirkt aber nicht wie ein CTA und konkurriert weniger mit YouTubes eigener UI.</p>
+          </li>
+        </ul>
+      </article>
+
+      <article class="panel wide-panel">
+        <div class="panel-head">
+          <h2>D: Segmentierte Channel-Pill</h2>
+          <p>Vorschlag fuer den kombinierten Channel-Button auf Videoebene: gleiche runde, laengliche Pill wie bei YouTube-Segmentbuttons. Beide Segmente teilen dieselbe dunkelblaue Flaeche; Hover hellt nur das aktive Segment in Blau auf.</p>
+        </div>
+        <div class="channel-layout">
+          <div class="channel-demo">
+            <span class="label">Default</span>
+            <div class="channel-line">
+              <div class="avatar"></div>
+              <div class="channel-copy">
+                <div class="channel-name"></div>
+                <div class="channel-meta"></div>
+              </div>
+              <div class="channel-control" aria-label="Segmented channel control default">
+                <button class="subscribe-action" type="button">Subscribe</button>
+                <button class="channel-download-action" type="button" aria-label="Download channel">
+                  <svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg>
+                </button>
+              </div>
+            </div>
+            <p>Einheitliche dunkelblaue Grundflaeche, keine graue YouTube-Flaeche, keine Schatten.</p>
+          </div>
+
+          <div class="channel-demo">
+            <span class="label">Hover auf Download-Segment</span>
+            <div class="channel-line">
+              <div class="avatar"></div>
+              <div class="channel-copy">
+                <div class="channel-name"></div>
+                <div class="channel-meta"></div>
+              </div>
+              <div class="channel-control" aria-label="Segmented channel control hover">
+                <button class="subscribe-action" type="button">Subscribe</button>
+                <button class="channel-download-action is-hover" type="button" aria-label="Download channel">
+                  <svg viewBox="0 0 500 500"><use href="#ta-download-icon"></use></svg>
+                </button>
+              </div>
+            </div>
+            <p>Nur das Segment unter dem Pointer wird heller blau. Der Rest der Pill bleibt ruhig und lesbar.</p>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
