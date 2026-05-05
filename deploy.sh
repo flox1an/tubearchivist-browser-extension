@@ -17,22 +17,35 @@ read -r VERSION
 
 # build release zip files
 function create_zip {
-    cd extension
+    local root_dir
+    root_dir=$(pwd)
+    local build_dir
+    build_dir=$(mktemp -d)
+
+    rm -f release/ta-companion-"$VERSION"-firefox.xpi
+    rm -f release/ta-companion-"$VERSION"-chrome.zip
+
+    cp -R extension/. "$build_dir"/
+    rm -f "$build_dir"/manifest.json
+    rm -f "$build_dir"/manifest-chrome.json
+    rm -f "$build_dir"/manifest-firefox.json
+    find "$build_dir" -name '.DS_Store' -delete
 
     # firefox
-    rm manifest.json
-    cp manifest-firefox.json manifest.json
-    zip -rq ../release/ta-companion-"$VERSION"-firefox.zip . \
-        -x manifest-chrome.json -x manifest-firefox.json
+    cp extension/manifest-firefox.json "$build_dir"/manifest.json
+    (
+        cd "$build_dir"
+        zip -rq "$root_dir"/release/ta-companion-"$VERSION"-firefox.xpi . -x '*.DS_Store'
+    )
 
     # chrome
-    rm manifest.json
-    cp manifest-chrome.json manifest.json
-    zip -rq ../release/ta-companion-"$VERSION"-chrome.zip . \
-        -x manifest-chrome.json -x manifest-firefox.json
+    cp extension/manifest-chrome.json "$build_dir"/manifest.json
+    (
+        cd "$build_dir"
+        zip -rq "$root_dir"/release/ta-companion-"$VERSION"-chrome.zip . -x '*.DS_Store'
+    )
 
-    rm manifest.json
-    cd ..
+    rm -rf "$build_dir"
 
 }
 

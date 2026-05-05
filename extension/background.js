@@ -30,11 +30,11 @@ async function sendGet(path) {
 
   const rawResponse = await fetch(url, {
     method: 'GET',
+    credentials: 'omit',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
       Authorization: 'Token ' + access.apiKey,
-      mode: 'no-cors',
     },
   });
 
@@ -52,11 +52,11 @@ async function sendData(path, payload, method) {
   try {
     const rawResponse = await fetch(url, {
       method: method,
+      credentials: 'omit',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
         Authorization: 'Token ' + access.apiKey,
-        mode: 'no-cors',
       },
       body: JSON.stringify(payload),
     });
@@ -80,6 +80,184 @@ async function getCookieState() {
   const path = 'api/appsettings/cookie/';
   let response = await sendGet(path);
   console.log('cookie state: ' + JSON.stringify(response));
+
+  return response;
+}
+
+async function getDownloadsPage(page) {
+  const path = `api/download/?filter=pending&page=${page}`;
+  let response = await sendGet(path);
+  return await attachBaseUrl(response);
+}
+
+async function getArchiveVideosPage(
+  page,
+  query = '',
+  sort = 'downloaded',
+  order = 'desc',
+  videoType = ''
+) {
+  const sortField = sort === 'published' ? 'published' : 'downloaded';
+  const sortOrder = order === 'asc' ? 'asc' : 'desc';
+  const typeFilter =
+    videoType === 'videos' || videoType === 'shorts' || videoType === 'streams' ? videoType : '';
+
+  if (!query) {
+    let params = new URLSearchParams();
+    params.set('sort', sortField);
+    params.set('order', sortOrder);
+    params.set('page', String(page));
+    if (typeFilter) {
+      params.set('type', typeFilter);
+    }
+    const path = `api/video/?${params.toString()}`;
+    let response = await sendGet(path);
+    return await attachBaseUrl(response);
+  }
+
+  const searchParams = new URLSearchParams();
+  searchParams.set('query', `video:${query}`);
+  let searchResponse = await sendGet(`api/search/?${searchParams.toString()}`);
+  let allItems = Array.isArray(searchResponse?.results?.video_results)
+    ? searchResponse.results.video_results
+    : [];
+  if (typeFilter) {
+    allItems = allItems.filter(item => item?.vid_type === typeFilter);
+  }
+  allItems.sort((a, b) => {
+    let left;
+    let right;
+
+    if (sortField === 'published') {
+      left = Date.parse(a?.published || '') || 0;
+      right = Date.parse(b?.published || '') || 0;
+    } else {
+      left = Number(a?.date_downloaded || 0);
+      right = Number(b?.date_downloaded || 0);
+    }
+
+    return sortOrder === 'asc' ? left - right : right - left;
+  });
+
+  const pageSize = 30;
+  const pageFrom = Math.max(0, (Number(page) - 1) * pageSize);
+  const pageItems = allItems.slice(pageFrom, pageFrom + pageSize);
+  const lastPage = Math.max(1, Math.ceil(allItems.length / pageSize));
+
+  return await attachBaseUrl({
+    data: pageItems,
+    paginate: {
+      total_hits: allItems.length,
+      page_size: pageSize,
+      page_from: pageFrom,
+      current_page: Number(page),
+      last_page: lastPage,
+      max_hits: false,
+      prev_pages: null,
+      next_pages: null,
+      params: '',
+    },
+  });
+}
+
+async function getDownloadHistStats() {
+  return await sendGet('api/stats/downloadhist/');
+}
+
+async function getDownloadStats() {
+  return await sendGet('api/stats/download/');
+}
+
+function arrayBufferToBase64(arrayBuffer) {
+  let bytes = new Uint8Array(arrayBuffer);
+  let chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    let slice = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...slice);
+  }
+  return btoa(binary);
+}
+
+const thumbnailResizeWidth = 160;
+const thumbnailResizeQuality = 0.7;
+const thumbnailResizedCache = new Map();
+
+async function resizeImageToWebpDataUrl(arrayBuffer) {
+  let sourceBlob = new Blob([arrayBuffer]);
+  let bitmap = await createImageBitmap(sourceBlob);
+
+  let sourceWidth = bitmap.width || thumbnailResizeWidth;
+  let sourceHeight = bitmap.height || Math.round((sourceWidth * 9) / 16);
+  let targetWidth = Math.min(thumbnailResizeWidth, sourceWidth);
+  let targetHeight = Math.max(1, Math.round((sourceHeight * targetWidth) / sourceWidth));
+
+  let canvas = new OffscreenCanvas(targetWidth, targetHeight);
+  let ctx = canvas.getContext('2d', { alpha: false });
+  ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+  bitmap.close();
+
+  let webpBlob = await canvas.convertToBlob({
+    type: 'image/webp',
+    quality: thumbnailResizeQuality,
+  });
+  let webpBuffer = await webpBlob.arrayBuffer();
+  let base64 = arrayBufferToBase64(webpBuffer);
+  return {
+    contentType: 'image/webp',
+    base64,
+  };
+}
+
+async function getThumbnailBytes(thumbPath) {
+  if (!thumbPath) return null;
+
+  let access = await getAccess();
+  let baseUrl = `${access.url}:${access.port}/`;
+  let thumbUrl = new URL(thumbPath, baseUrl).href;
+  if (thumbnailResizedCache.has(thumbUrl)) {
+    return thumbnailResizedCache.get(thumbUrl);
+  }
+
+  let response = await fetch(thumbUrl, {
+    method: 'GET',
+    credentials: 'omit',
+    headers: {
+      Authorization: 'Token ' + access.apiKey,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Thumbnail request failed (${response.status})`);
+  }
+
+  let buffer = await response.arrayBuffer();
+  try {
+    let resized = await resizeImageToWebpDataUrl(buffer);
+    thumbnailResizedCache.set(thumbUrl, resized);
+    return resized;
+  } catch (error) {
+    console.log('thumbnail resize failed, falling back to original', error);
+    let contentType = response.headers.get('content-type') || 'image/jpeg';
+    let base64 = arrayBufferToBase64(buffer);
+    let originalPayload = {
+      contentType,
+      base64,
+    };
+    thumbnailResizedCache.set(thumbUrl, originalPayload);
+    return originalPayload;
+  }
+}
+
+async function attachBaseUrl(response) {
+  if (!Array.isArray(response?.data)) return response;
+
+  let access = await getAccess();
+  let baseUrl = `${access.url}:${access.port}/`;
+  response.data = response.data.map(item => ({
+    ...item,
+    ta_base_url: baseUrl,
+  }));
 
   return response;
 }
@@ -213,24 +391,29 @@ let listenerEnabled = false;
 let isThrottled = false;
 
 async function handleContinuousCookie(checked) {
-  if (checked === true) {
-    browserType.cookies.onChanged.addListener(onCookieChange);
-    listenerEnabled = true;
-    console.log('Cookie listener enabled');
-  } else {
-    browserType.cookies.onChanged.removeListener(onCookieChange);
-    listenerEnabled = false;
-    console.log('Cookie listener disabled');
-  }
+  listenerEnabled = checked === true;
+  console.log(`Cookie listener ${listenerEnabled ? 'enabled' : 'disabled'}`);
 }
 
-function onCookieChange(changeInfo) {
+async function onCookieChange(changeInfo) {
+  let continuousSync = listenerEnabled;
+
+  if (!continuousSync) {
+    let data = await browserType.storage.local.get('continuousSync');
+    continuousSync = data?.continuousSync?.checked === true;
+    listenerEnabled = continuousSync;
+  }
+
+  if (!continuousSync) {
+    return;
+  }
+
   if (!isThrottled) {
     isThrottled = true;
 
     console.log('Cookie event detected:', changeInfo);
 
-    sendCookies();
+    await sendCookies();
 
     setTimeout(() => {
       isThrottled = false;
@@ -246,6 +429,11 @@ type Message =
   | { type: 'cookieState' }
   | { type: 'sendCookie' }
   | { type: 'getCookieLines' }
+  | { type: 'getDownloadsPage', page: number }
+  | { type: 'getArchiveVideosPage', page: number, query?: string, sort?: string, order?: string, videoType?: string }
+  | { type: 'getDownloadHistStats' }
+  | { type: 'getDownloadStats' }
+  | { type: 'getThumbnailBytes', thumbPath: string }
   | { type: 'continuousSync', checked: boolean }
   | { type: 'download', url: string }
   | { type: 'subscribe', url: string }
@@ -272,6 +460,27 @@ function handleMessage(request, sender, sendResponse) {
       }
       case 'getCookieLines': {
         return await getCookieLines();
+      }
+      case 'getDownloadsPage': {
+        return await getDownloadsPage(request.page);
+      }
+      case 'getArchiveVideosPage': {
+        return await getArchiveVideosPage(
+          request.page,
+          request.query || '',
+          request.sort || 'downloaded',
+          request.order || 'desc',
+          request.videoType || ''
+        );
+      }
+      case 'getDownloadHistStats': {
+        return await getDownloadHistStats();
+      }
+      case 'getDownloadStats': {
+        return await getDownloadStats();
+      }
+      case 'getThumbnailBytes': {
+        return await getThumbnailBytes(request.thumbPath);
       }
       case 'continuousSync': {
         return await handleContinuousCookie(request.checked);
@@ -313,9 +522,4 @@ function handleMessage(request, sender, sendResponse) {
 }
 
 browserType.runtime.onMessage.addListener(handleMessage);
-
-browserType.runtime.onStartup.addListener(() => {
-  browserType.storage.local.get('continuousSync', data => {
-    handleContinuousCookie(data?.continuousSync?.checked || false);
-  });
-});
+browserType.cookies.onChanged.addListener(onCookieChange);
