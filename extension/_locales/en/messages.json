@@ -1,0 +1,35 @@
+{
+  "download_video": {
+    "message": "TA download video"
+  },
+  "download_channel": {
+    "message": "TA download channel"
+  },
+  "queue_download": {
+    "message": "Queue download"
+  },
+  "queued": {
+    "message": "Queued"
+  },
+  "open_in_ta": {
+    "message": "Open in TA"
+  },
+  "subscribe": {
+    "message": "Subscribe"
+  },
+  "unsubscribe": {
+    "message": "Unsubscribe"
+  },
+  "success": {
+    "message": "Success"
+  },
+  "checking": {
+    "message": "Checking..."
+  },
+  "subscribe_to": {
+    "message": "TA Subscribe"
+  },
+  "error": {
+    "message": "Error"
+  }
+}

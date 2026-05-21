@@ -183,6 +183,10 @@ const thumbnailResizeWidth = 160;
 const thumbnailResizeQuality = 0.7;
 const thumbnailResizedCache = new Map();
 
+// Caches for video exists checks (optimizing performance & collapsing concurrent requests)
+const videoExistsCache = new Map();
+const videoExistsInflight = new Map();
+
 async function resizeImageToWebpDataUrl(arrayBuffer) {
   let sourceBlob = new Blob([arrayBuffer]);
   let bitmap = await createImageBitmap(sourceBlob);
@@ -279,6 +283,9 @@ async function verifyConnection() {
 
 // send youtube link from injected buttons
 async function download(url) {
+  // Clear any cached non-existence for this video ID
+  videoExistsCache.delete(url);
+
   let apiURL = 'api/download/';
   let autostart = await browserType.storage.local.get('autostart');
   if (Object.keys(autostart).length > 0 && autostart.autostart.checked) {
@@ -314,11 +321,42 @@ async function subscribe(url, subscribed) {
 }
 
 async function videoExists(id) {
-  const path = `api/video/${id}/`;
-  let response = await sendGet(path);
-  if (response?.error) return false;
-  let access = await getAccess();
-  return new URL(`video/${id}/`, `${access.url}:${access.port}/`).href;
+  // Check memory cache first
+  if (videoExistsCache.has(id)) {
+    const entry = videoExistsCache.get(id);
+    if (entry.expiresAt > Date.now()) {
+      return entry.value;
+    }
+    videoExistsCache.delete(id);
+  }
+
+  // Check if there is an in-flight request for this video ID
+  if (videoExistsInflight.has(id)) {
+    return videoExistsInflight.get(id);
+  }
+
+  const promise = (async () => {
+    try {
+      const path = `api/video/${id}/`;
+      let response = await sendGet(path);
+      let value = false;
+      let ttl = 2 * 60 * 1000; // Negative TTL: 2 minutes if it doesn't exist
+
+      if (response && !response.error) {
+        let access = await getAccess();
+        value = new URL(`video/${id}/`, `${access.url}:${access.port}/`).href;
+        ttl = 24 * 60 * 60 * 1000; // Positive TTL: 24 hours if it exists
+      }
+
+      videoExistsCache.set(id, { value, expiresAt: Date.now() + ttl });
+      return value;
+    } finally {
+      videoExistsInflight.delete(id);
+    }
+  })();
+
+  videoExistsInflight.set(id, promise);
+  return promise;
 }
 
 async function getChannel(channelHandle) {

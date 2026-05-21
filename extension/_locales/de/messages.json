@@ -1,0 +1,35 @@
+{
+  "download_video": {
+    "message": "TA Video herunterladen"
+  },
+  "download_channel": {
+    "message": "TA Kanal herunterladen"
+  },
+  "queue_download": {
+    "message": "Download anfordern"
+  },
+  "queued": {
+    "message": "Warteschlange"
+  },
+  "open_in_ta": {
+    "message": "In TA öffnen"
+  },
+  "subscribe": {
+    "message": "Abonnieren"
+  },
+  "unsubscribe": {
+    "message": "Deabonnieren"
+  },
+  "success": {
+    "message": "Erfolgreich"
+  },
+  "checking": {
+    "message": "Prüfen..."
+  },
+  "subscribe_to": {
+    "message": "TA Abonnieren"
+  },
+  "error": {
+    "message": "Fehler"
+  }
+}

@@ -38,4 +38,3 @@ export function formatPublished(value) {
 export function createMetaText(parts) {
   return parts.filter(Boolean).join(' · ');
 }
-

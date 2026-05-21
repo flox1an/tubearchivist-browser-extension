@@ -2,10 +2,13 @@
   "name": "tubearchivist-browser-extension",
   "private": true,
   "scripts": {
-    "lint": "eslint 'extension/**/*.js'",
-    "format": "prettier --write 'extension/**/*.js'"
+    "build": "node build.js",
+    "dev": "node build.js --watch",
+    "lint": "eslint 'src/**/*.js' 'extension/**/*.js'",
+    "format": "prettier --write 'src/**/*.js' 'extension/**/*.js'"
   },
   "devDependencies": {
+    "esbuild": "^0.20.2",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^8.10.2",
     "prettier": "^2.8.8"

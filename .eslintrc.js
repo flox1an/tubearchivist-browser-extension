@@ -23,7 +23,7 @@ module.exports = {
   },
   overrides: [
     {
-      files: ['extension/popup.js', 'extension/popup/**/*.js'],
+      files: ['src/**/*.js', 'extension/popup.js', 'extension/popup/**/*.js'],
       parserOptions: {
         sourceType: 'module',
       },

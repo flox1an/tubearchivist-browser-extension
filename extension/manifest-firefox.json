@@ -3,6 +3,7 @@
     "name": "TubeArchivist Companion",
     "description": "Interact with your selfhosted TA server.",
     "version": "0.4.3",
+    "default_locale": "en",
     "icons": {
         "128": "/images/icon128.png"
     },
@@ -22,6 +23,7 @@
     "content_scripts": [
         {
             "matches": ["https://www.youtube.com/*"],
+            "css": ["content.css"],
             "js": ["script.js"]
         }
     ],

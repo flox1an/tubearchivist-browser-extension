@@ -52,4 +52,3 @@ export const el = {
   archiveSort: byId('archive-sort'),
   archiveSearchClose: byId('archive-search-close'),
 };
-

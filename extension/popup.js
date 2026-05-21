@@ -647,8 +647,7 @@ archiveSort.addEventListener('change', event => {
 
 archiveType.addEventListener('change', event => {
   let value = String(event.target.value || '');
-  archiveTypeValue =
-    value === 'videos' || value === 'shorts' || value === 'streams' ? value : '';
+  archiveTypeValue = value === 'videos' || value === 'shorts' || value === 'streams' ? value : '';
   applyArchiveSearch();
   persistPopupUiState();
 });

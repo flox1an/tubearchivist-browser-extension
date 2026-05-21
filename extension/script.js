@@ -1,10 +1,42 @@
-/*
-content script running on youtube.com
-*/
+"use strict";
+(() => {
+  // src/common/selectors.js
+  var shortsLinkSelector = 'a[href^="/shorts/"], a[href*="youtube.com/shorts/"]';
+  var shortsVideoContainerSelector = [
+    "ytd-reel-video-renderer",
+    "ytd-reel-player-overlay-renderer",
+    "reel-action-bar-view-model",
+    "ytd-shorts",
+    "ytd-player"
+  ].join(", ");
+  var titleContainerSelector = [
+    "#video-title",
+    "a.ytLockupMetadataViewModelTitle",
+    'h3 a[href*="/watch"]',
+    'h3 a[href*="/shorts"]',
+    'h4 a[href*="/watch"]',
+    'h4 a[href*="/shorts"]',
+    'a[href^="/shorts/"]'
+  ].join(", ");
+  var videoCardRootSelector = [
+    "yt-lockup-view-model",
+    "yt-lockup-metadata-view-model",
+    "ytd-rich-grid-media",
+    "ytd-rich-item-renderer",
+    "ytd-video-renderer",
+    "ytd-compact-video-renderer",
+    "ytd-grid-video-renderer",
+    "ytd-playlist-video-renderer"
+  ].join(", ");
+  var videoLinkSelector = [
+    'a[href^="/watch"]',
+    'a[href^="/shorts/"]',
+    'a[href*="youtube.com/watch"]',
+    'a[href*="youtube.com/shorts/"]'
+  ].join(", ");
 
-'use strict';
-
-const downloadIcon = `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+  // src/common/icons.js
+  var downloadIcon = `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
 viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="preserve">
 <style type="text/css">
 .st0{display:none;}
@@ -43,8 +75,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
 </g>
 </g>
 </svg>`;
-
-const checkmarkIcon = `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+  var checkmarkIcon = `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
 viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="preserve">
 <style type="text/css">
 .st0{display:none;}
@@ -85,1891 +116,1471 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
 </g>
 </svg>`;
 
-const defaultIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>minus-thick</title><path d="M20 14H4V10H20" /></svg>`;
-const queuedIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>clock-outline</title><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm.5-13h-1v6l5.2 3.1.5-.9-4.7-2.7Z"/></svg>`;
-
-const taButtonDefaultBackground = 'rgba(3, 21, 33, 0.82)';
-const taButtonHoverBackground = 'rgba(39, 82, 105, 0.98)';
-const taButtonBorder = 'rgba(151, 212, 200, 0.26)';
-const taButtonDivider = 'rgba(151, 212, 200, 0.2)';
-const taButtonDefaultForeground = '#ecfff9';
-const taButtonHoverForeground = '#52e0bf';
-const taButtonIconDefaultFilter = 'invert()';
-const taButtonIconHoverFilter =
-  'invert(84%) sepia(47%) saturate(541%) hue-rotate(108deg) brightness(95%) contrast(86%)';
-const taButtonZIndex = 999999;
-
-function getDownloadButtonIconElement(button) {
-  return button.querySelector('span');
-}
-
-function applyDownloadButtonDefaultStyle(button) {
-  Object.assign(button.style, {
-    backgroundColor: taButtonDefaultBackground,
-    borderColor: taButtonBorder,
-    boxShadow: 'none',
-    color: taButtonDefaultForeground,
-  });
-  let icon = getDownloadButtonIconElement(button);
-  if (icon) icon.style.filter = taButtonIconDefaultFilter;
-}
-
-function applyDownloadButtonHoverStyle(button) {
-  Object.assign(button.style, {
-    backgroundColor: taButtonHoverBackground,
-    borderColor: taButtonBorder,
-    boxShadow: 'none',
-    color: taButtonHoverForeground,
-  });
-  let icon = getDownloadButtonIconElement(button);
-  if (icon) icon.style.filter = taButtonIconHoverFilter;
-}
-
-function attachDownloadButtonHoverStyle(button) {
-  button.addEventListener('mouseenter', () => applyDownloadButtonHoverStyle(button));
-  button.addEventListener('mouseleave', () => applyDownloadButtonDefaultStyle(button));
-}
-
-function stopYouTubeThumbnailEvent(event) {
-  event.preventDefault();
-  event.stopPropagation();
-  event.stopImmediatePropagation?.();
-}
-
-function captureDownloadButtonPointerEvents(element) {
-  ['pointerdown', 'mousedown', 'mouseup', 'touchstart', 'touchend'].forEach(eventName => {
-    element.addEventListener(eventName, stopYouTubeThumbnailEvent, true);
-  });
-}
-
-function attachSegmentHoverStyle(segment) {
-  segment.addEventListener('mouseenter', () => {
-    segment.style.backgroundColor = taButtonHoverBackground;
-    segment.style.color = taButtonHoverForeground;
-  });
-  segment.addEventListener('mouseleave', () => {
-    segment.style.backgroundColor = 'transparent';
-    segment.style.color = 'inherit';
-  });
-}
-
-function styleChannelDownloadSegmentIcon(button) {
-  if (!button.classList.contains('ta-channel-download-segment')) return;
-  let iconWrapper = button.querySelector('.ta-channel-download-icon-wrap');
-  if (!iconWrapper) {
-    let icon = button.querySelector('svg');
-    if (!icon) return;
-    iconWrapper = document.createElement('span');
-    iconWrapper.classList.add('ta-channel-download-icon-wrap');
-    icon.replaceWith(iconWrapper);
-    iconWrapper.appendChild(icon);
-  }
-  Object.assign(iconWrapper.style, {
-    width: '14px',
-    height: '14px',
-    maxWidth: '14px',
-    maxHeight: '14px',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: '0 0 14px',
-    overflow: 'hidden',
-    color: 'currentColor',
-  });
-  let icon = iconWrapper.querySelector('svg');
-  if (!icon) return;
-  icon.removeAttribute('width');
-  icon.removeAttribute('height');
-  Object.assign(icon.style, {
-    width: '16px',
-    height: '16px',
-    maxWidth: '16px',
-    maxHeight: '16px',
-    display: 'block',
-    flex: '0 0 16px',
-    fill: 'currentColor',
-  });
-}
-
-let browserType = getBrowser();
-const watchAutoQueueRatioThreshold = 0.2;
-const watchAutoQueueMinSeconds = 60;
-const watchAutoQueueMaxSeconds = 600;
-const watchAutoQueueShortRatioThreshold = 0.8;
-const watchAutoQueuePollMs = 1000;
-const watchAutoQueueMaxDeltaSeconds = 2;
-const watchAutoQueueRetryCooldownMs = 30000;
-const injectThrottleMs = 120;
-const videoExistsCache = new Map();
-const videoExistsInflight = new Map();
-let watchAutoQueueEnabled = false;
-let likeAutoQueueEnabled = false;
-let watchProgressState = null;
-let watchProgressPlayer = null;
-let likeQueueState = null;
-const shortsLinkSelector = 'a[href^="/shorts/"], a[href*="youtube.com/shorts/"]';
-const shortsVideoContainerSelector = [
-  'ytd-reel-video-renderer',
-  'ytd-reel-player-overlay-renderer',
-  'reel-action-bar-view-model',
-  'ytd-shorts',
-  'ytd-player',
-].join(', ');
-
-const titleContainerSelector = [
-  '#video-title',
-  'a.ytLockupMetadataViewModelTitle',
-  'a[href^="/shorts/"]',
-].join(', ');
-
-const videoCardRootSelector = [
-  'yt-lockup-view-model',
-  'yt-lockup-metadata-view-model',
-  'ytd-rich-grid-media',
-  'ytd-rich-item-renderer',
-  'ytd-video-renderer',
-  'ytd-compact-video-renderer',
-  'ytd-grid-video-renderer',
-  'ytd-playlist-video-renderer',
-].join(', ');
-
-const videoLinkSelector = [
-  'a[href^="/watch"]',
-  'a[href^="/shorts/"]',
-  'a[href*="youtube.com/watch"]',
-  'a[href*="youtube.com/shorts/"]',
-].join(', ');
-
-const videoButtonVariantStyles = {
-  lockup: {
-    position: 'absolute',
-    top: 0,
-    right: '32px',
-    zIndex: taButtonZIndex,
-  },
-  'lockup-menu-below': {
-    position: 'absolute',
-    top: '32px',
-    right: '-10px',
-    zIndex: taButtonZIndex,
-  },
-  'playlist-menu-below': {
-    position: 'relative',
-    top: 'auto',
-    right: 'auto',
-    marginTop: '8px',
-    zIndex: taButtonZIndex,
-  },
-  default: {
-    position: 'absolute',
-    top: 0,
-    right: '32px',
-    zIndex: taButtonZIndex,
-  },
-  'shorts-grid': {
-    position: 'absolute',
-    top: '8px',
-    right: '8px',
-    zIndex: taButtonZIndex,
-  },
-};
-
-// boilerplate to dedect browser type api
-function getBrowser() {
-  if (typeof chrome !== 'undefined') {
-    if (typeof browser !== 'undefined') {
-      console.log('detected firefox');
-      return browser;
-    } else {
-      console.log('detected chrome');
-      return chrome;
-    }
-  } else {
-    console.log('failed to dedect browser');
-    throw 'browser detection error';
-  }
-}
-
-function getChannelContainers() {
-  const elements = document.querySelectorAll(
-    'yt-flexible-actions-view-model.ytPageHeaderViewModelFlexibleActions, #owner'
-  );
-  const channelContainerNodes = [];
-
-  elements.forEach(element => {
-    if (isElementVisible(element) && window.location.pathname !== '/playlist') {
-      channelContainerNodes.push(element);
-    }
-  });
-
-  return channelContainerNodes;
-}
-
-async function loadWatchAutoQueuePreference() {
-  try {
-    let stored = await browserType.storage.local.get('watchAutoQueue');
-    watchAutoQueueEnabled = stored?.watchAutoQueue?.checked === true;
-  } catch (error) {
-    console.error('failed to load watch auto queue preference', error);
-  }
-}
-
-async function loadLikeAutoQueuePreference() {
-  try {
-    let stored = await browserType.storage.local.get('likeAutoQueue');
-    likeAutoQueueEnabled = stored?.likeAutoQueue?.checked === true;
-  } catch (error) {
-    console.error('failed to load like auto queue preference', error);
-  }
-}
-
-function resetWatchProgressState(videoId = null) {
-  watchProgressState = {
-    videoId,
-    watchedSeconds: 0,
-    queued: false,
-    queueAttemptInFlight: false,
-    lastQueueAttemptAt: 0,
-    lastCurrentTime: null,
-    lastTickAt: null,
-    lastLoggedBucket: -1,
-  };
-}
-
-function resetLikeQueueState(videoId = null) {
-  likeQueueState = {
-    videoId,
-    queued: false,
-    queueAttemptInFlight: false,
-    lastQueueAttemptAt: 0,
-    lastLiked: false,
-  };
-}
-
-function parseShortsVideoIdFromHref(href) {
-  if (!href) return null;
-  try {
-    const url = new URL(href, window.location.href);
-    if (!url.pathname.startsWith('/shorts/')) return null;
-    return url.pathname.split('/')[2] || null;
-  } catch {
-    return null;
-  }
-}
-
-function getElementViewportIntersectionArea(element) {
-  if (!element) return 0;
-  const rect = element.getBoundingClientRect();
-  const width = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0));
-  const height = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
-  return width * height;
-}
-
-function getVideoIdFromShortsContext(element) {
-  if (!element) return null;
-
-  let container = element.closest(shortsVideoContainerSelector);
-  while (container) {
-    let directLink = container.matches(shortsLinkSelector)
-      ? container
-      : container.querySelector(shortsLinkSelector);
-    let videoId = parseShortsVideoIdFromHref(directLink?.getAttribute('href'));
-    if (videoId) return videoId;
-
-    container = container.parentElement?.closest(shortsVideoContainerSelector) || null;
-  }
-
-  let nearbyLink = element.closest(shortsLinkSelector);
-  return parseShortsVideoIdFromHref(nearbyLink?.getAttribute('href'));
-}
-
-function getShortsVideoIdFromViewport() {
-  const points = [
-    [window.innerWidth / 2, window.innerHeight / 2],
-    [window.innerWidth / 2, window.innerHeight * 0.65],
-    [window.innerWidth / 2, window.innerHeight * 0.35],
-  ];
-
-  for (let [x, y] of points) {
-    for (let element of document.elementsFromPoint(x, y)) {
-      let videoId = getVideoIdFromShortsContext(element);
-      if (videoId) return videoId;
-    }
-  }
-
-  return null;
-}
-
-function getShortsVideoIdFromVisibleLinks() {
-  let bestCandidate = null;
-  let bestArea = 0;
-
-  for (let link of document.querySelectorAll(shortsLinkSelector)) {
-    let videoId = parseShortsVideoIdFromHref(link.getAttribute('href'));
-    if (!videoId) continue;
-
-    let area = getElementViewportIntersectionArea(link);
-    if (area > bestArea) {
-      bestArea = area;
-      bestCandidate = videoId;
-    }
-  }
-
-  return bestCandidate;
-}
-
-function getShortsPlaybackContainerFromViewport() {
-  const points = [
-    [window.innerWidth / 2, window.innerHeight / 2],
-    [window.innerWidth / 2, window.innerHeight * 0.65],
-    [window.innerWidth / 2, window.innerHeight * 0.35],
-  ];
-
-  for (let [x, y] of points) {
-    for (let element of document.elementsFromPoint(x, y)) {
-      let container = element.closest('ytd-reel-video-renderer, ytd-reel-player-overlay-renderer');
-      if (container) return container;
-    }
-  }
-
-  return null;
-}
-
-function getPlaybackPlayer() {
-  const players = [...document.querySelectorAll('video.html5-main-video, ytd-player video, video')];
-  if (players.length <= 1) return players[0] || null;
-
-  players.sort((left, right) => {
-    const playingScore = Number(!right.paused) - Number(!left.paused);
-    if (playingScore !== 0) return playingScore;
-
-    return getElementViewportIntersectionArea(right) - getElementViewportIntersectionArea(left);
-  });
-
-  return players[0] || null;
-}
-
-function getCurrentPlaybackContainer() {
-  let player = getPlaybackPlayer();
-  if (window.location.pathname.startsWith('/shorts/')) {
-    return (
-      getShortsPlaybackContainerFromViewport() ||
-      player?.closest('ytd-reel-video-renderer, ytd-reel-player-overlay-renderer, ytd-shorts') ||
-      null
-    );
-  }
-
-  return player?.closest('ytd-watch-flexy, ytd-player, #columns, #primary, body') || null;
-}
-
-function getCurrentPlaybackVideoId() {
-  if (window.location.pathname === '/watch') {
-    return new URLSearchParams(window.location.search).get('v');
-  }
-
-  if (window.location.pathname.startsWith('/shorts/')) {
-    let player = getPlaybackPlayer();
-    let videoId =
-      getVideoIdFromShortsContext(player) ||
-      getShortsVideoIdFromViewport() ||
-      getShortsVideoIdFromVisibleLinks();
-    return videoId || window.location.pathname.split('/')[2] || null;
-  }
-
-  return null;
-}
-
-function isAdShowing() {
-  return Boolean(document.querySelector('.html5-video-player.ad-showing'));
-}
-
-function getWatchAutoQueueTargetSeconds(duration) {
-  if (duration <= watchAutoQueueMinSeconds) {
-    return duration * watchAutoQueueShortRatioThreshold;
-  }
-
-  return Math.min(
-    Math.max(duration * watchAutoQueueRatioThreshold, watchAutoQueueMinSeconds),
-    watchAutoQueueMaxSeconds
-  );
-}
-
-function logWatchProgress(message, metadata = {}) {
-  console.log('[TA auto queue]', message, metadata);
-}
-
-async function maybeAutoQueueVideo(videoId, state, reason) {
-  if (!videoId || !state || state.queueAttemptInFlight) return false;
-  if (Date.now() - state.lastQueueAttemptAt < watchAutoQueueRetryCooldownMs) return false;
-
-  state.queueAttemptInFlight = true;
-  state.lastQueueAttemptAt = Date.now();
-  logWatchProgress('queue attempt starting', { videoId, reason });
-  try {
-    let existingVideoUrl = await sendMessage({ type: 'videoExists', videoId });
-    if (existingVideoUrl !== false) {
-      logWatchProgress('queue skipped because video already exists in TA', { videoId, reason });
-      state.queued = true;
-      return true;
-    }
-
-    await sendMessage({ type: 'download', url: videoId });
-    logWatchProgress('queue request sent successfully', { videoId, reason });
-    state.queued = true;
-    return true;
-  } catch (error) {
-    console.error('[TA auto queue] queue request failed', { videoId, reason, error });
-  } finally {
-    if (state?.videoId === videoId) {
-      state.queueAttemptInFlight = false;
-    }
-  }
-  return false;
-}
-
-async function maybeAutoQueueWatchedVideo(videoId) {
-  return maybeAutoQueueVideo(videoId, watchProgressState, 'watched');
-}
-
-function trackWatchProgress() {
-  if (!watchAutoQueueEnabled) return;
-
-  let videoId = getCurrentPlaybackVideoId();
-  if (!videoId) {
-    resetWatchProgressState();
-    return;
-  }
-
-  if (!watchProgressState || watchProgressState.videoId !== videoId) {
-    resetWatchProgressState(videoId);
-    logWatchProgress('tracking started', { videoId, pathname: window.location.pathname });
-  }
-
-  let player = getPlaybackPlayer();
-  if (!player || !Number.isFinite(player.duration) || player.duration <= 0 || isAdShowing()) {
-    if (!player) {
-      logWatchProgress('waiting for player element', { videoId });
-    }
-    watchProgressState.lastCurrentTime = null;
-    watchProgressState.lastTickAt = Date.now();
-    return;
-  }
-
-  const now = Date.now();
-  const currentTime = player.currentTime;
-  const duration = player.duration;
-  const lastCurrentTime = watchProgressState.lastCurrentTime;
-  const lastTickAt = watchProgressState.lastTickAt;
-
-  if (!player.paused && lastCurrentTime != null && lastTickAt != null) {
-    let deltaSeconds = currentTime - lastCurrentTime;
-    let elapsedSeconds = (now - lastTickAt) / 1000;
-    if (
-      deltaSeconds > 0 &&
-      deltaSeconds <= watchAutoQueueMaxDeltaSeconds &&
-      deltaSeconds <= elapsedSeconds + 0.5
-    ) {
-      watchProgressState.watchedSeconds += deltaSeconds;
-    }
-  }
-
-  watchProgressState.lastCurrentTime = currentTime;
-  watchProgressState.lastTickAt = now;
-
-  if (watchProgressState.queued) return;
-
-  let targetSeconds = getWatchAutoQueueTargetSeconds(duration);
-  let progressBucket = Math.floor(watchProgressState.watchedSeconds / 15);
-  if (progressBucket > watchProgressState.lastLoggedBucket) {
-    watchProgressState.lastLoggedBucket = progressBucket;
-    logWatchProgress('progress update', {
-      videoId,
-      watchedSeconds: Math.round(watchProgressState.watchedSeconds),
-      targetSeconds: Math.round(targetSeconds),
-      duration: Math.round(duration),
-    });
-  }
-
-  if (watchProgressState.watchedSeconds >= targetSeconds) {
-    logWatchProgress('watch threshold reached', {
-      videoId,
-      watchedSeconds: Math.round(watchProgressState.watchedSeconds),
-      targetSeconds: Math.round(targetSeconds),
-    });
-    maybeAutoQueueWatchedVideo(videoId);
-  }
-}
-
-function handlePlaybackEvent() {
-  trackWatchProgress();
-  trackLikedVideoState();
-}
-
-function detachWatchProgressListeners() {
-  if (!watchProgressPlayer) return;
-
-  watchProgressPlayer.removeEventListener('timeupdate', handlePlaybackEvent);
-  watchProgressPlayer.removeEventListener('play', handlePlaybackEvent);
-  watchProgressPlayer.removeEventListener('playing', handlePlaybackEvent);
-  watchProgressPlayer.removeEventListener('pause', handlePlaybackEvent);
-  watchProgressPlayer.removeEventListener('loadedmetadata', handlePlaybackEvent);
-  watchProgressPlayer.removeEventListener('durationchange', handlePlaybackEvent);
-  watchProgressPlayer.removeEventListener('seeking', handlePlaybackEvent);
-  watchProgressPlayer.removeEventListener('seeked', handlePlaybackEvent);
-  watchProgressPlayer = null;
-}
-
-function attachWatchProgressListeners() {
-  let player = getPlaybackPlayer();
-  if (player === watchProgressPlayer) return;
-
-  detachWatchProgressListeners();
-  if (!player) return;
-
-  watchProgressPlayer = player;
-  player.addEventListener('timeupdate', handlePlaybackEvent);
-  player.addEventListener('play', handlePlaybackEvent);
-  player.addEventListener('playing', handlePlaybackEvent);
-  player.addEventListener('pause', handlePlaybackEvent);
-  player.addEventListener('loadedmetadata', handlePlaybackEvent);
-  player.addEventListener('durationchange', handlePlaybackEvent);
-  player.addEventListener('seeking', handlePlaybackEvent);
-  player.addEventListener('seeked', handlePlaybackEvent);
-}
-
-function getLikeButtons() {
-  return [
-    ...document.querySelectorAll(
-      [
-        'like-button-view-model button[aria-pressed]',
-        'segmented-like-dislike-button-view-model button[aria-pressed]',
-        'ytd-toggle-button-renderer button[aria-pressed]',
-        'toggle-button-view-model button[aria-pressed]',
-        'like-button-view-model button',
-        'segmented-like-dislike-button-view-model button',
-      ].join(', ')
-    ),
-  ];
-}
-
-function isLikeButton(button) {
-  if (!button) return false;
-  let label = [
-    button.getAttribute('aria-label'),
-    button.getAttribute('title'),
-    button.textContent,
-    button.closest('[aria-label]')?.getAttribute('aria-label'),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  return label.includes('like') || label.includes('mag ich') || label.includes('gefällt');
-}
-
-function getCurrentLikeButton() {
-  let playbackContainer = getCurrentPlaybackContainer();
-  if (playbackContainer) {
-    let buttonInPlaybackContainer = [...playbackContainer.querySelectorAll('button')].find(button =>
-      isLikeButton(button)
-    );
-    if (buttonInPlaybackContainer) return buttonInPlaybackContainer;
-  }
-
-  let videoId = getCurrentPlaybackVideoId();
-  if (window.location.pathname.startsWith('/shorts/') && videoId) {
-    let matchingShortsContainer = [...document.querySelectorAll('ytd-reel-video-renderer')].find(container => {
-      let link = container.querySelector(shortsLinkSelector);
-      return parseShortsVideoIdFromHref(link?.getAttribute('href')) === videoId;
-    });
-    let buttonInMatchingShortsContainer = [...(matchingShortsContainer?.querySelectorAll('button') || [])].find(
-      button => isLikeButton(button)
-    );
-    if (buttonInMatchingShortsContainer) return buttonInMatchingShortsContainer;
-  }
-
-  let visibleLikeButtons = getLikeButtons()
-    .filter(button => isLikeButton(button))
-    .map(button => ({ button, area: getElementViewportIntersectionArea(button) }))
-    .filter(item => item.area > 0)
-    .sort((left, right) => right.area - left.area);
-
-  return visibleLikeButtons[0]?.button || null;
-}
-
-function isVideoLiked(button) {
-  return button?.getAttribute('aria-pressed') === 'true';
-}
-
-function trackLikedVideoState() {
-  if (!likeAutoQueueEnabled) return;
-
-  let videoId = getCurrentPlaybackVideoId();
-  if (!videoId) {
-    resetLikeQueueState();
-    return;
-  }
-
-  if (!likeQueueState || likeQueueState.videoId !== videoId) {
-    resetLikeQueueState(videoId);
-    logWatchProgress('like tracking started', { videoId, pathname: window.location.pathname });
-  }
-
-  let likeButton = getCurrentLikeButton();
-  if (!likeButton) {
-    logWatchProgress('waiting for like button', { videoId });
-    return;
-  }
-
-  let liked = isVideoLiked(likeButton);
-  if (liked && !likeQueueState.lastLiked && !likeQueueState.queued) {
-    logWatchProgress('like detected', { videoId });
-    maybeAutoQueueVideo(videoId, likeQueueState, 'liked');
-  }
-
-  likeQueueState.lastLiked = liked;
-}
-
-function isElementVisible(element) {
-  return element.offsetWidth > 0 || element.offsetHeight > 0 || element.getClientRects().length > 0;
-}
-
-function ensureTALinks() {
-  ensureThumbnailHoverOverlayButtons();
-  ensureShortsThumbnailFallbackButtons();
-
-  let shortsContainer = getShortsContainer();
-  if (shortsContainer) {
-    if (shortsContainer.hasTA && !shortsContainer.querySelector('.ta-shorts-button')) {
-      shortsContainer.hasTA = false;
-    }
-    if (!shortsContainer.hasTA) {
-      let result = buildShortsButton();
-      if (result) {
-        let { wrapper, btn } = result;
-        shortsContainer.insertBefore(wrapper, shortsContainer.firstElementChild);
-        shortsContainer.hasTA = true;
-        checkVideoExists(btn);
+  // src/content-script/api.js
+  var videoExistsCache = /* @__PURE__ */ new Map();
+  var videoExistsInflight = /* @__PURE__ */ new Map();
+  function getBrowser() {
+    if (typeof chrome !== "undefined") {
+      if (typeof browser !== "undefined") {
+        return browser;
+      } else {
+        return chrome;
       }
-    }
-  }
-
-  let channelContainerNodes = getChannelContainers();
-
-  for (let channelContainer of channelContainerNodes) {
-    channelContainer = adjustOwner(channelContainer);
-    if (channelContainer.hasTA) continue;
-    let channelButton = buildChannelButton(channelContainer);
-    channelContainer.appendChild(channelButton);
-    channelContainer.hasTA = true;
-  }
-
-  let titleContainerNodes = getTitleContainers();
-  for (let titleContainer of titleContainerNodes) {
-    let placement = getVideoButtonPlacement(titleContainer);
-    if (!placement) continue;
-
-    let existingButton = findExistingVideoButton(titleContainer);
-    let existingInTarget = placement.container.querySelector('.ta-button');
-
-    if (existingInTarget) continue;
-    if (existingButton && existingButton.parentElement === placement.container) continue;
-
-    if (existingButton && existingButton.parentElement) {
-      existingButton.remove();
-    }
-
-    let videoButton = buildVideoButton(titleContainer, { variant: placement.variant });
-    if (videoButton == null) continue;
-
-    prepareVideoButtonContainer(placement.container, videoButton);
-    if (placement.insertBefore) {
-      placement.container.insertBefore(videoButton, placement.insertBefore);
     } else {
-      placement.container.appendChild(videoButton);
-    }
-  }
-}
-ensureTALinks = throttled(ensureTALinks, injectThrottleMs);
-
-function findExistingVideoButton(titleContainer) {
-  let videoId = getVideoId(titleContainer);
-  if (!videoId) return null;
-  return document.querySelector(`.ta-button[data-id="${CSS.escape(videoId)}"]`);
-}
-
-function ensureThumbnailHoverOverlayButtons() {
-  let overlays = document.querySelectorAll('yt-thumbnail-hover-overlay-toggle-actions-view-model');
-  for (let overlay of overlays) {
-    ensureThumbnailHoverOverlayButton(overlay);
-  }
-}
-
-function ensureShortsThumbnailFallbackButtons() {
-  let thumbnails = document.querySelectorAll('yt-thumbnail-view-model');
-  for (let thumbnail of thumbnails) {
-    if (thumbnail.querySelector('yt-thumbnail-hover-overlay-toggle-actions-view-model')) continue;
-    if (thumbnail.querySelector('.ta-button')) continue;
-
-    let lockupHost = thumbnail.closest('.ytLockupViewModelHost');
-    let hasCompactMenuPlacement = Boolean(
-      lockupHost?.querySelector(
-        'yt-lockup-metadata-view-model.ytLockupMetadataViewModelCompact .ytLockupMetadataViewModelMenuButton'
-      )
-    );
-    if (hasCompactMenuPlacement) continue;
-
-    let videoId = getVideoIdForThumbnailViewModel(thumbnail);
-    if (!videoId) continue;
-    if (!isShortsVideoHref(getVideoHrefForThumbnailViewModel(thumbnail))) continue;
-
-    if (!thumbnail.style.position) {
-      thumbnail.style.position = 'relative';
-    }
-
-    let button = createRoundedDownloadButton(videoId, {
-      title: `TA download video: ${videoId}`,
-      size: 32,
-      iconSize: 16,
-      asButton: true,
-    });
-    Object.assign(button.style, {
-      position: 'absolute',
-      top: '8px',
-      right: '8px',
-      zIndex: taButtonZIndex,
-    });
-
-    thumbnail.appendChild(button);
-    checkVideoExists(button);
-  }
-}
-
-function ensureThumbnailHoverOverlayButton(overlay) {
-  if (!overlay || overlay.querySelector('.ta-button')) return false;
-
-  let videoId = getVideoIdForHoverOverlay(overlay);
-  if (!videoId) return false;
-
-  let actionRow = document.createElement('div');
-  actionRow.className = 'ytThumbnailHoverOverlayToggleActionsViewModelButton';
-  actionRow.style.zIndex = taButtonZIndex;
-  actionRow.style.pointerEvents = 'auto';
-  captureDownloadButtonPointerEvents(actionRow);
-
-  let taButton = buildHoverOverlayVideoButton(videoId);
-  actionRow.appendChild(taButton);
-  overlay.appendChild(actionRow);
-
-  checkVideoExists(taButton);
-  return true;
-}
-
-function getVideoIdForHoverOverlay(overlay) {
-  let cardRoot = overlay.closest(videoCardRootSelector);
-  if (!cardRoot) return null;
-
-  let link = cardRoot.querySelector(videoLinkSelector);
-  let href = link?.getAttribute('href');
-  if (!href) return null;
-
-  try {
-    let url = new URL(href, location.href);
-    if (url.pathname === '/watch') {
-      return url.searchParams.get('v');
-    }
-    if (url.pathname.startsWith('/shorts/')) {
-      return url.pathname.split('/')[2] || null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function getVideoIdForThumbnailViewModel(thumbnail) {
-  let href = getVideoHrefForThumbnailViewModel(thumbnail);
-  if (!href) return null;
-
-  try {
-    let url = new URL(href, location.href);
-    if (url.pathname === '/watch') {
-      return url.searchParams.get('v');
-    }
-    if (url.pathname.startsWith('/shorts/')) {
-      return url.pathname.split('/')[2] || null;
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
-function getVideoHrefForThumbnailViewModel(thumbnail) {
-  let cardRoot = thumbnail.closest(videoCardRootSelector);
-  if (!cardRoot) return null;
-
-  let link = cardRoot.querySelector(videoLinkSelector);
-  return link?.getAttribute('href') || null;
-}
-
-function isShortsVideoHref(href) {
-  if (!href) return false;
-  try {
-    return new URL(href, location.href).pathname.startsWith('/shorts/');
-  } catch {
-    return false;
-  }
-}
-
-function buildHoverOverlayVideoButton(videoId) {
-  return createRoundedDownloadButton(videoId, {
-    title: `TA download video: ${videoId}`,
-    size: 32,
-    iconSize: 16,
-    asButton: true,
-  });
-}
-
-function ensureThumbnailHoverOverlayButtonNear(element) {
-  if (!element) return;
-  let origin =
-    element instanceof Element ? element : element.parentElement || element.parentNode || null;
-  if (!(origin instanceof Element)) return;
-
-  let cardRoot = origin.closest(videoCardRootSelector);
-  if (!cardRoot) return;
-
-  let tryInject = () => {
-    let overlay = cardRoot.querySelector('yt-thumbnail-hover-overlay-toggle-actions-view-model');
-    if (!overlay) return false;
-    return ensureThumbnailHoverOverlayButton(overlay);
-  };
-
-  if (tryInject()) return;
-  requestAnimationFrame(() => {
-    if (tryInject()) return;
-    requestAnimationFrame(() => {
-      tryInject();
-    });
-  });
-}
-
-function adjustOwner(channelContainer) {
-  return (
-    channelContainer.querySelector('.ytFlexibleActionsViewModelActionRow') ||
-    channelContainer.querySelector('#buttons') ||
-    channelContainer
-  );
-}
-
-function buildChannelButton(channelContainer) {
-  let channelHandle = getChannelHandle(channelContainer);
-  channelContainer.taDerivedHandle = channelHandle;
-
-  let buttonDiv = buildChannelButtonDiv();
-
-  let channelSubButton = buildChannelSubButton(channelHandle);
-  buttonDiv.appendChild(channelSubButton);
-  channelContainer.taSubButton = channelSubButton;
-
-  let spacer = buildSpacer();
-  buttonDiv.appendChild(spacer);
-
-  let channelDownloadButton = buildChannelDownloadButton();
-  buttonDiv.appendChild(channelDownloadButton);
-  channelContainer.taDownloadButton = channelDownloadButton;
-
-  if (!channelContainer.taObserver) {
-    function updateButtonsIfNecessary() {
-      let newHandle = getChannelHandle(channelContainer);
-      if (channelContainer.taDerivedHandle === newHandle) return;
-      console.log(`updating handle from ${channelContainer.taDerivedHandle} to ${newHandle}`);
-      channelContainer.taDerivedHandle = newHandle;
-      let channelSubButton = buildChannelSubButton(newHandle);
-      channelContainer.taSubButton.replaceWith(channelSubButton);
-      channelContainer.taSubButton = channelSubButton;
-
-      let channelDownloadButton = buildChannelDownloadButton();
-      channelContainer.taDownloadButton.replaceWith(channelDownloadButton);
-      channelContainer.taDownloadButton = channelDownloadButton;
-    }
-    channelContainer.taObserver = new MutationObserver(throttled(updateButtonsIfNecessary, 100));
-    channelContainer.taObserver.observe(channelContainer, {
-      attributes: true,
-      childList: true,
-      subtree: true,
-    });
-  }
-
-  return buttonDiv;
-}
-
-function getChannelHandle(channelContainer) {
-  function findeHandleString(container) {
-    let result = null;
-
-    function recursiveTraversal(element) {
-      for (let child of element.children) {
-        if (child.tagName === 'A' && child.hasAttribute('href')) {
-          const href = child.getAttribute('href');
-          const match = href.match(/\/@[^/]+/); // Match the path starting with "@"
-          if (match) {
-            // handle is in channel link
-            result = match[0].substring(1);
-            return;
-          }
-        }
-
-        if (child.children.length === 0 && child.textContent.trim().startsWith('@')) {
-          // handle is in channel description text
-          result = child.textContent.trim();
-          return;
-        }
-
-        recursiveTraversal(child);
-        if (result) return;
+      if (typeof browser !== "undefined") {
+        return browser;
       }
-    }
-
-    recursiveTraversal(container);
-    return result;
-  }
-
-  let channelHandle = findeHandleString(channelContainer.parentElement);
-
-  return channelHandle;
-}
-
-function buildChannelButtonDiv() {
-  let buttonDiv = document.createElement('div');
-  buttonDiv.classList.add('ta-channel-button');
-  let isWatchPage = window.location.pathname.startsWith('/watch');
-  Object.assign(buttonDiv.style, {
-    display: 'inline-flex',
-    alignItems: 'stretch',
-    backgroundColor: taButtonDefaultBackground,
-    border: `1px solid ${taButtonBorder}`,
-    boxShadow: 'none',
-    color: taButtonDefaultForeground,
-    fontSize: '14px',
-    padding: '0',
-    borderRadius: '9999px',
-    marginLeft: isWatchPage ? '8px' : '0',
-    overflow: 'hidden',
-  });
-  return buttonDiv;
-}
-
-function buildChannelSubButton(channelHandle) {
-  let channelSubButton = document.createElement('span');
-  channelSubButton.innerText = 'Checking...';
-  channelSubButton.title = `TA Subscribe: ${channelHandle}`;
-  channelSubButton.setAttribute('data-id', channelHandle);
-  channelSubButton.setAttribute('data-type', 'channel');
-
-  channelSubButton.addEventListener('click', e => {
-    e.preventDefault();
-    if (channelSubButton.innerText === 'Subscribe') {
-      console.log(`subscribe to: ${channelHandle}`);
-      sendUrl(channelHandle, 'subscribe', channelSubButton);
-    } else if (channelSubButton.innerText === 'Unsubscribe') {
-      console.log(`unsubscribe from: ${channelHandle}`);
-      sendUrl(channelHandle, 'unsubscribe', channelSubButton);
-    } else {
-      console.log('Unknown state');
-    }
-    e.stopPropagation();
-  });
-  Object.assign(channelSubButton.style, {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: '86px',
-    height: '34px',
-    padding: '0 12px',
-    backgroundColor: 'transparent',
-    cursor: 'pointer',
-    lineHeight: 1,
-    whiteSpace: 'nowrap',
-  });
-  attachSegmentHoverStyle(channelSubButton);
-  checkChannelSubscribed(channelSubButton);
-
-  return channelSubButton;
-}
-
-function checkChannelSubscribed(channelSubButton) {
-  function handleResponse(message) {
-    if (!message || (typeof message === 'object' && message.channel_subscribed === false)) {
-      channelSubButton.innerText = 'Subscribe';
-    } else if (typeof message === 'object' && message.channel_subscribed === true) {
-      channelSubButton.innerText = 'Unsubscribe';
-    } else {
-      console.log('Unknown state');
+      throw new Error("Browser API not found");
     }
   }
-  function handleError(e) {
-    buttonError(channelSubButton);
-    channelSubButton.innerText = 'Error';
-    console.error('error', e);
-  }
-
-  let channelHandle = channelSubButton.dataset.id;
-  let message = { type: 'getChannel', channelHandle };
-  let sending = sendMessage(message);
-  sending.then(handleResponse, handleError);
-}
-
-function buildSpacer() {
-  let spacer = document.createElement('span');
-  spacer.setAttribute('aria-hidden', 'true');
-  Object.assign(spacer.style, {
-    alignSelf: 'stretch',
-    width: '1px',
-    backgroundColor: taButtonDivider,
-  });
-
-  return spacer;
-}
-
-function buildChannelDownloadButton() {
-  let channelDownloadButton = document.createElement('span');
-  channelDownloadButton.classList.add('ta-channel-download-segment');
-  let currentLocation = window.location.href;
-  let urlObj = new URL(currentLocation);
-
-  if (urlObj.pathname.startsWith('/watch')) {
-    let params = new URLSearchParams(document.location.search);
-    let videoId = params.get('v');
-    channelDownloadButton.setAttribute('data-type', 'video');
-    channelDownloadButton.setAttribute('data-id', videoId);
-    channelDownloadButton.title = `TA download video: ${videoId}`;
-  } else {
-    channelDownloadButton.setAttribute('data-id', currentLocation);
-    channelDownloadButton.setAttribute('data-type', 'channel');
-    channelDownloadButton.title = `TA download channel ${currentLocation}`;
-  }
-  channelDownloadButton.innerHTML = downloadIcon;
-  styleChannelDownloadSegmentIcon(channelDownloadButton);
-  channelDownloadButton.addEventListener('click', e => {
-    e.preventDefault();
-    console.log(`download: ${currentLocation}`);
-    sendDownload(channelDownloadButton);
-    e.stopPropagation();
-  });
-  Object.assign(channelDownloadButton.style, {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '38px',
-    height: '34px',
-    padding: '0',
-    backgroundColor: 'transparent',
-    cursor: 'pointer',
-  });
-  attachSegmentHoverStyle(channelDownloadButton);
-  if (channelDownloadButton.dataset.type === 'video') {
-    checkVideoExists(channelDownloadButton);
-  }
-
-  return channelDownloadButton;
-}
-
-function getTitleContainers() {
-  let elements = document.querySelectorAll(titleContainerSelector);
-  let videoNodes = [];
-  let seen = new Set();
-  elements.forEach(element => {
-    if (!isElementVisible(element)) return;
-    if (!getVideoCardRoot(element)) return;
-
-    let videoId = getVideoId(element);
-    if (!videoId || seen.has(videoId)) return;
-
-    element.taVideoId = videoId;
-    seen.add(videoId);
-    videoNodes.push(element);
-  });
-  return videoNodes;
-}
-
-function getVideoId(titleContainer) {
-  return getVideoInfo(titleContainer)?.videoId;
-}
-
-function getVideoHref(titleContainer) {
-  return getVideoInfo(titleContainer)?.href || null;
-}
-
-function getVideoInfo(titleContainer) {
-  if (!titleContainer) return null;
-  if (titleContainer.taVideoInfo) return titleContainer.taVideoInfo;
-
-  let href = getNearestLink(titleContainer);
-  if (!href) return null;
-
-  try {
-    let url = new URL(href, location.href);
-    let videoId;
-    if (url.pathname === '/watch') {
-      videoId = url.searchParams.get('v') || undefined;
-    } else if (url.pathname.startsWith('/shorts/')) {
-      videoId = url.pathname.split('/')[2] || undefined;
+  var browserApi = getBrowser();
+  async function sendMessage(message) {
+    var _a;
+    let response;
+    try {
+      response = await browserApi.runtime.sendMessage(message);
+    } catch (e) {
+      if ((_a = e == null ? void 0 : e.message) == null ? void 0 : _a.includes("Extension context invalidated"))
+        return;
+      throw e;
     }
-    if (!videoId) return null;
-
-    titleContainer.taVideoInfo = {
-      href,
-      isShorts: url.pathname.startsWith('/shorts/'),
-      videoId,
-    };
-    return titleContainer.taVideoInfo;
-  } catch {
-    // not a valid URL
-  }
-  return null;
-}
-
-function getVideoCardRoot(titleContainer) {
-  if (!titleContainer) return null;
-  if (titleContainer.taCardRoot) return titleContainer.taCardRoot;
-
-  let cardRoot = titleContainer.closest(videoCardRootSelector);
-  if (cardRoot) {
-    titleContainer.taCardRoot = cardRoot;
-  }
-  return cardRoot;
-}
-
-function isShortsCardTitle(titleContainer) {
-  return Boolean(getVideoInfo(titleContainer)?.isShorts);
-}
-
-function getVideoButtonPlacement(titleContainer) {
-  let playlistRenderer = titleContainer.closest('ytd-playlist-video-renderer');
-  if (playlistRenderer) {
-    let menuContainer = playlistRenderer.querySelector('#menu');
-    if (menuContainer) {
-      return {
-        container: menuContainer,
-        variant: 'playlist-menu-below',
-      };
+    let { success, value } = response;
+    if (!success) {
+      throw value;
     }
+    return value;
   }
-
-  let hoverActionsContainer = getThumbnailHoverActionsContainer(titleContainer);
-  if (hoverActionsContainer) {
-    return {
-      container: hoverActionsContainer,
-      variant: 'thumbnail-hover-actions',
-    };
-  }
-
-  if (titleContainer.classList.contains('ytLockupMetadataViewModelTitle')) {
-    let container = titleContainer.closest('yt-lockup-metadata-view-model');
-    if (!container) return null;
-
-    let host = container.closest('.ytLockupViewModelHost');
-    let isHorizontalLockup = host?.classList?.contains('ytLockupViewModelHorizontal');
-    if (isHorizontalLockup && container.classList.contains('ytLockupMetadataViewModelCompact')) {
-      return {
-        container,
-        variant: 'lockup-menu-below',
-      };
+  function t(key, fallbackValue) {
+    if (browserApi && browserApi.i18n) {
+      const msg = browserApi.i18n.getMessage(key);
+      if (msg)
+        return msg;
     }
-
-    if (
-      container.classList.contains('ytLockupMetadataViewModelCompact') ||
-      container.classList.contains('ytLockupMetadataViewModelRichGridLegacyTypography')
-    ) {
-      return null;
-    }
-    if (isHorizontalLockup) {
-      return null;
-    }
-    return {
-      container,
-      insertBefore: container.querySelector('.ytLockupMetadataViewModelMenuButton'),
-      variant: 'lockup',
-    };
+    return fallbackValue;
   }
-
-  if (isShortsCardTitle(titleContainer)) {
-    let container = getVideoCardRoot(titleContainer);
-    if (!container) return null;
-    return { container, variant: 'shorts-grid' };
-  }
-
-  let container = getTitleOverlayContainer(titleContainer);
-  if (!container) return null;
-  return { container, variant: 'default' };
-}
-
-function getThumbnailHoverActionsContainer(titleContainer) {
-  let cardRoot = getVideoCardRoot(titleContainer);
-  if (!cardRoot) return null;
-  return cardRoot.querySelector('yt-thumbnail-hover-overlay-toggle-actions-view-model');
-}
-
-function isUpcomingVideoCard(titleContainer) {
-  const cardRoot = getVideoCardRoot(titleContainer);
-  if (!cardRoot) return false;
-
-  // Unreleased premieres/upcoming videos expose a reminder toggle attachment.
-  return Boolean(
-    cardRoot.querySelector(
-      'lockup-attachments-view-model yt-flexible-actions-view-model toggle-button-view-model'
-    )
-  );
-}
-
-function createRoundedDownloadButton(videoId, options = {}) {
-  let {
-    title = `TA download video: ${videoId}`,
-    size = 32,
-    iconSize = 16,
-    ghostReveal = false,
-    asButton = false,
-  } = options;
-
-  let dlButton = document.createElement(asButton ? 'button' : 'a');
-  dlButton.classList.add('ta-button', 'ta-hover-action');
-  if (ghostReveal) {
-    dlButton.classList.add('ta-hover-reveal');
-  }
-  if (asButton) {
-    dlButton.type = 'button';
-  } else {
-    dlButton.href = '#';
-  }
-  dlButton.setAttribute('data-id', videoId);
-  dlButton.setAttribute('data-type', 'video');
-  dlButton.title = title;
-
-  Object.assign(dlButton.style, {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    textDecoration: 'none',
-    boxSizing: 'border-box',
-    appearance: 'none',
-    width: `${size}px`,
-    height: `${size}px`,
-    borderRadius: '9999px',
-    backgroundColor: taButtonDefaultBackground,
-    border: `1px solid ${taButtonBorder}`,
-    boxShadow: 'none',
-    color: taButtonDefaultForeground,
-    cursor: 'pointer',
-    opacity: 1,
-  });
-
-  if (ghostReveal) {
-    Object.assign(dlButton.style, {
-      border: '1px solid transparent',
-      backgroundColor: 'transparent',
-      boxShadow: 'none',
-      opacity: 0,
-      pointerEvents: 'none',
-    });
-  }
-
-  let dlIcon = document.createElement('span');
-  dlIcon.innerHTML = defaultIcon;
-  Object.assign(dlIcon.style, {
-    filter: 'invert()',
-    width: `${iconSize}px`,
-    height: `${iconSize}px`,
-    display: 'flex',
-  });
-  dlButton.appendChild(dlIcon);
-
-  captureDownloadButtonPointerEvents(dlButton);
-  attachDownloadButtonHoverStyle(dlButton);
-  if (ghostReveal) {
-    dlButton.style.backgroundColor = 'transparent';
-    dlButton.style.borderColor = 'transparent';
-  }
-
-  dlButton.addEventListener('click', e => {
-    stopYouTubeThumbnailEvent(e);
-    sendDownload(dlButton);
-  });
-
-  return dlButton;
-}
-
-function buildVideoButton(titleContainer, options = {}) {
-  if (isUpcomingVideoCard(titleContainer)) return null;
-
-  let videoId = titleContainer.taVideoId || getVideoId(titleContainer);
-  if (!videoId) return;
-  let { variant } = options;
-
-  const dlButton = document.createElement('a');
-  dlButton.classList.add('ta-button');
-  dlButton.href = '#';
-  dlButton.setAttribute('data-id', videoId);
-  dlButton.setAttribute('data-type', 'video');
-  dlButton.title = `TA download video: ${titleContainer.innerText} [${videoId}]`;
-
-  let usesRoundedDesign =
-    variant === 'thumbnail-hover-actions' ||
-    variant === 'lockup-menu-below' ||
-    variant === 'playlist-menu-below';
-  let roundedSize = variant === 'lockup-menu-below' || variant === 'playlist-menu-below' ? 36 : 32;
-  let roundedIconSize =
-    variant === 'lockup-menu-below' || variant === 'playlist-menu-below' ? 18 : 16;
-
-  if (usesRoundedDesign) {
-    let roundedButton = createRoundedDownloadButton(videoId, {
-      title: `TA download video: ${titleContainer.innerText} [${videoId}]`,
-      size: roundedSize,
-      iconSize: roundedIconSize,
-      ghostReveal: variant === 'lockup-menu-below' || variant === 'playlist-menu-below',
-      asButton: variant === 'thumbnail-hover-actions',
-    });
-    Object.assign(roundedButton.style, videoButtonVariantStyles[variant] || {});
-    return roundedButton;
-  } else {
-    Object.assign(dlButton.style, {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      boxSizing: 'border-box',
-      backgroundColor: taButtonDefaultBackground,
-      border: `1px solid ${taButtonBorder}`,
-      boxShadow: 'none',
-      color: taButtonDefaultForeground,
-      fontSize: '1.4rem',
-      textDecoration: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      height: 'fit-content',
-      opacity: 0,
-    });
-  }
-
-  Object.assign(dlButton.style, videoButtonVariantStyles[variant] || {});
-
-  let dlIcon = document.createElement('span');
-  dlIcon.innerHTML = defaultIcon;
-  Object.assign(dlIcon.style, {
-    filter: 'invert()',
-    width: '15px',
-    height: '15px',
-    padding: '7px 8px',
-  });
-
-  dlButton.appendChild(dlIcon);
-  attachDownloadButtonHoverStyle(dlButton);
-
-  dlButton.addEventListener('click', e => {
-    e.preventDefault();
-    sendDownload(dlButton);
-    e.stopPropagation();
-  });
-
-  return dlButton;
-}
-
-function getNearestLink(element) {
-  if (!element) return null;
-  if (element.matches(videoLinkSelector)) {
-    return element.getAttribute('href');
-  }
-
-  let closestLink = element.closest(videoLinkSelector);
-  if (closestLink) {
-    return closestLink.getAttribute('href');
-  }
-
-  let cardRoot = getVideoCardRoot(element);
-  let cardLink = cardRoot?.querySelector(videoLinkSelector);
-  if (cardLink) {
-    return cardLink.getAttribute('href');
-  }
-
-  // Check siblings
-  let sibling = element;
-  while (sibling) {
-    sibling = sibling.previousElementSibling;
-    if (sibling && sibling.tagName === 'A' && sibling.getAttribute('href') !== '#') {
-      return sibling.getAttribute('href');
-    }
-  }
-
-  sibling = element;
-  while (sibling) {
-    sibling = sibling.nextElementSibling;
-    if (sibling && sibling.tagName === 'A' && sibling.getAttribute('href') !== '#') {
-      return sibling.getAttribute('href');
-    }
-  }
-
-  // Check parent elements
-  for (let i = 0; i < 5 && element && element !== document; i++) {
-    if (element.tagName === 'A' && element.getAttribute('href') !== '#') {
-      return element.getAttribute('href');
-    }
-    element = element.parentNode;
-  }
-  return null;
-}
-
-function getTitleOverlayContainer(titleContainer) {
-  let titleWrapper = titleContainer?.closest('#title-wrapper');
-  if (titleWrapper) return titleWrapper;
-
-  let element = titleContainer;
-  for (let i = 0; i < 5 && element && element !== document; i++) {
-    if (element.tagName === 'H3') {
-      return element;
-    }
-    element = element.parentNode;
-  }
-
-  let parent = titleContainer?.parentElement;
-  if (parent && parent.tagName !== 'A') return parent;
-
-  parent = titleContainer?.parentElement?.parentElement;
-  if (parent && parent.tagName !== 'A') return parent;
-
-  return null;
-}
-
-function prepareVideoButtonContainer(container, taButton) {
-  if (taButton.classList.contains('ta-hover-reveal')) {
-    if (!container.style.position) {
-      container.style.position = 'relative';
-    }
-    let playlistHost = container.closest('ytd-playlist-video-renderer');
-    if (playlistHost && container.id === 'menu') {
-      Object.assign(container.style, {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '8px',
-      });
-    }
-    let hoverHost = playlistHost || container;
-    if (hoverHost.taHoverRevealListener) return;
-
-    hoverHost.addEventListener('mouseenter', () => {
-      taButton.style.opacity = 1;
-      taButton.style.pointerEvents = 'auto';
-      applyDownloadButtonDefaultStyle(taButton);
-      if (!taButton.isChecked) {
-        checkVideoExists(taButton);
+  function checkVideoExists(taButton, setButtonOpenState2, setButtonDefaultState2, buttonError2) {
+    function applyExistsState(message) {
+      if (typeof message === "string" && message) {
+        setButtonOpenState2(taButton, message);
+      } else {
+        setButtonDefaultState2(taButton);
       }
-    });
-    hoverHost.addEventListener('mouseleave', () => {
-      taButton.style.opacity = 0;
-      taButton.style.pointerEvents = 'none';
-      taButton.style.backgroundColor = 'transparent';
-      taButton.style.borderColor = 'transparent';
-      taButton.style.boxShadow = 'none';
-    });
-    hoverHost.taHoverRevealListener = true;
-    return;
-  }
-
-  if (taButton.classList.contains('ta-hover-action')) {
-    return;
-  }
-
-  if (!container.style.position) {
-    container.style.position = 'relative';
-  }
-  if (container.hasListener) return;
-
-  container.classList.add('title-container');
-  container.addEventListener('mouseenter', () => {
-    if (!taButton.isChecked) checkVideoExists(taButton);
-    taButton.style.opacity = 1;
-  });
-
-  container.addEventListener('mouseleave', () => {
-    taButton.style.opacity = 0;
-  });
-  container.hasListener = true;
-}
-
-function checkVideoExists(taButton) {
-  function applyExistsState(message) {
-    if (typeof message === 'string' && message) {
-      setButtonOpenState(taButton, message);
-    } else {
-      setButtonDefaultState(taButton);
+      taButton.isChecked = true;
     }
-    taButton.isChecked = true;
-  }
-  function handleError(e) {
-    buttonError(taButton);
+    function handleError(e) {
+      buttonError2(taButton);
+      taButton.isChecked = true;
+      let videoId2 = taButton.dataset.id;
+      console.log(`error: failed to get info from TA for video ${videoId2}`);
+      console.error(e);
+    }
     let videoId = taButton.dataset.id;
-    console.log(`error: failed to get info from TA for video ${videoId}`);
-    console.error(e);
-  }
-
-  let videoId = taButton.dataset.id;
-  if (!videoId) {
-    videoId = getVideoId(taButton);
-    if (videoId) {
-      taButton.setAttribute('data-id', videoId);
-      taButton.setAttribute('data-type', 'video');
-      taButton.title = `TA download video: ${taButton.parentElement.innerText} [${videoId}]`;
+    if (!videoId)
+      return;
+    if (videoExistsCache.has(videoId)) {
+      let cached = videoExistsCache.get(videoId);
+      if (cached === true) {
+        videoExistsCache.delete(videoId);
+      } else {
+        applyExistsState(cached);
+        return;
+      }
     }
-  }
-
-  if (videoExistsCache.has(videoId)) {
-    let cached = videoExistsCache.get(videoId);
-    if (cached === true) {
-      // Legacy invalid cached value from old logic: treat as unknown.
-      videoExistsCache.delete(videoId);
-    } else {
-      applyExistsState(cached);
+    if (videoExistsInflight.has(videoId)) {
+      videoExistsInflight.get(videoId).then(applyExistsState, handleError);
       return;
     }
-  }
-
-  if (videoExistsInflight.has(videoId)) {
-    videoExistsInflight
-      .get(videoId)
-      .then(applyExistsState, handleError);
-    return;
-  }
-
-  let requestPromise = sendMessage({ type: 'videoExists', videoId });
-  videoExistsInflight.set(videoId, requestPromise);
-  requestPromise
-    .then(message => {
+    let requestPromise = sendMessage({ type: "videoExists", videoId });
+    videoExistsInflight.set(videoId, requestPromise);
+    requestPromise.then((message) => {
       videoExistsCache.set(videoId, message);
       applyExistsState(message);
-    })
-    .catch(handleError)
-    .finally(() => {
+    }).catch(handleError).finally(() => {
       videoExistsInflight.delete(videoId);
     });
-}
-
-function getShortsContainer() {
-  if (!window.location.pathname.startsWith('/shorts/')) return null;
-  return document.querySelector('reel-action-bar-view-model');
-}
-
-function buildShortsButton() {
-  let videoId = window.location.pathname.split('/')[2];
-  if (!videoId) return null;
-
-  let wrapper = document.createElement('div');
-  wrapper.classList.add('ta-shorts-button');
-  Object.assign(wrapper.style, {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '4px',
-    marginBottom: '4px',
-  });
-
-  let btn = document.createElement('button');
-  btn.setAttribute('data-id', videoId);
-  btn.setAttribute('data-type', 'video');
-  btn.title = `TA download: ${videoId}`;
-  btn.classList.add('ta-hover-action');
-  Object.assign(btn.style, {
-    width: '48px',
-    height: '48px',
-    borderRadius: '50%',
-    boxSizing: 'border-box',
-    border: `1px solid ${taButtonBorder}`,
-    backgroundColor: taButtonDefaultBackground,
-    boxShadow: 'none',
-    color: taButtonDefaultForeground,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  });
-
-  let iconSpan = document.createElement('span');
-  iconSpan.innerHTML = downloadIcon;
-  Object.assign(iconSpan.style, {
-    filter: 'invert()',
-    width: '24px',
-    height: '24px',
-    display: 'flex',
-  });
-  btn.appendChild(iconSpan);
-
-  attachDownloadButtonHoverStyle(btn);
-
-  btn.addEventListener('click', e => {
-    e.preventDefault();
-    sendDownload(btn);
-    e.stopPropagation();
-  });
-
-  let label = document.createElement('div');
-  label.innerText = 'TA';
-  label.style.setProperty('color', 'white', 'important');
-  label.style.fontSize = '12px';
-  label.style.fontWeight = '500';
-
-  wrapper.appendChild(btn);
-  wrapper.appendChild(label);
-
-  return { wrapper, btn };
-}
-
-function sendDownload(button) {
-  if (button.dataset.taState === 'open' && button.dataset.openUrl) {
-    let win = window.open(button.dataset.openUrl, '_blank');
-    win?.focus?.();
-    return;
   }
-  let url = button.dataset.id;
-  if (!url) return;
-  sendUrl(url, 'download', button);
-}
 
-function buttonError(button) {
-  let buttonSpan = button.querySelector('span');
-  if (buttonSpan === null) {
-    buttonSpan = button;
+  // src/content-script/dom-helpers.js
+  function parseShortsVideoIdFromHref(href) {
+    if (!href)
+      return null;
+    try {
+      const url = new URL(href, window.location.href);
+      if (!url.pathname.startsWith("/shorts/"))
+        return null;
+      return url.pathname.split("/")[2] || null;
+    } catch {
+      return null;
+    }
   }
-  buttonSpan.style.filter =
-    'invert(19%) sepia(93%) saturate(7472%) hue-rotate(359deg) brightness(105%) contrast(113%)';
-  buttonSpan.style.color = 'red';
-
-  button.style.opacity = 1;
-  button.addEventListener('mouseout', () => {
-    Object.assign(button.style, {
-      opacity: 1,
+  function getElementViewportIntersectionArea(element) {
+    if (!element)
+      return 0;
+    const rect = element.getBoundingClientRect();
+    const width = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0));
+    const height = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
+    return width * height;
+  }
+  function getVideoIdFromShortsContext(element) {
+    var _a;
+    if (!element)
+      return null;
+    let container = element.closest(shortsVideoContainerSelector);
+    while (container) {
+      let directLink = container.matches(shortsLinkSelector) ? container : container.querySelector(shortsLinkSelector);
+      let videoId = parseShortsVideoIdFromHref(directLink == null ? void 0 : directLink.getAttribute("href"));
+      if (videoId)
+        return videoId;
+      container = ((_a = container.parentElement) == null ? void 0 : _a.closest(shortsVideoContainerSelector)) || null;
+    }
+    let nearbyLink = element.closest(shortsLinkSelector);
+    return parseShortsVideoIdFromHref(nearbyLink == null ? void 0 : nearbyLink.getAttribute("href"));
+  }
+  function getShortsVideoIdFromViewport() {
+    const points = [
+      [window.innerWidth / 2, window.innerHeight / 2],
+      [window.innerWidth / 2, window.innerHeight * 0.65],
+      [window.innerWidth / 2, window.innerHeight * 0.35]
+    ];
+    for (let [x, y] of points) {
+      for (let element of document.elementsFromPoint(x, y)) {
+        let videoId = getVideoIdFromShortsContext(element);
+        if (videoId)
+          return videoId;
+      }
+    }
+    return null;
+  }
+  function getShortsVideoIdFromVisibleLinks() {
+    let bestCandidate = null;
+    let bestArea = 0;
+    for (let link of document.querySelectorAll(shortsLinkSelector)) {
+      let videoId = parseShortsVideoIdFromHref(link.getAttribute("href"));
+      if (!videoId)
+        continue;
+      let area = getElementViewportIntersectionArea(link);
+      if (area > bestArea) {
+        bestArea = area;
+        bestCandidate = videoId;
+      }
+    }
+    return bestCandidate;
+  }
+  function getShortsPlaybackContainerFromViewport() {
+    const points = [
+      [window.innerWidth / 2, window.innerHeight / 2],
+      [window.innerWidth / 2, window.innerHeight * 0.65],
+      [window.innerWidth / 2, window.innerHeight * 0.35]
+    ];
+    for (let [x, y] of points) {
+      for (let element of document.elementsFromPoint(x, y)) {
+        let container = element.closest("ytd-reel-video-renderer, ytd-reel-player-overlay-renderer");
+        if (container)
+          return container;
+      }
+    }
+    return null;
+  }
+  function getPlaybackPlayer() {
+    const players = [...document.querySelectorAll("video.html5-main-video, ytd-player video, video")];
+    if (players.length <= 1)
+      return players[0] || null;
+    players.sort((left, right) => {
+      const playingScore = Number(!right.paused) - Number(!left.paused);
+      if (playingScore !== 0)
+        return playingScore;
+      return getElementViewportIntersectionArea(right) - getElementViewportIntersectionArea(left);
     });
-  });
-}
-
-function buttonSuccess(button) {
-  let buttonSpan = button.querySelector('span');
-  if (buttonSpan === null) {
-    buttonSpan = button;
+    return players[0] || null;
   }
-  if (buttonSpan.innerHTML === 'Subscribe') {
-    buttonSpan.innerHTML = 'Success';
-    setTimeout(() => {
-      buttonSpan.innerHTML = 'Unsubscribe';
-    }, 2000);
-  } else {
-    setButtonQueuedState(button);
+  function getCurrentPlaybackContainer() {
+    let player = getPlaybackPlayer();
+    if (window.location.pathname.startsWith("/shorts/")) {
+      return getShortsPlaybackContainerFromViewport() || (player == null ? void 0 : player.closest("ytd-reel-video-renderer, ytd-reel-player-overlay-renderer, ytd-shorts")) || null;
+    }
+    return (player == null ? void 0 : player.closest("ytd-watch-flexy, ytd-player, #columns, #primary, body")) || null;
   }
-}
+  function getCurrentPlaybackVideoId() {
+    if (window.location.pathname === "/watch") {
+      return new URLSearchParams(window.location.search).get("v");
+    }
+    if (window.location.pathname.startsWith("/shorts/")) {
+      let player = getPlaybackPlayer();
+      let videoId = getVideoIdFromShortsContext(player) || getShortsVideoIdFromViewport() || getShortsVideoIdFromVisibleLinks();
+      return videoId || window.location.pathname.split("/")[2] || null;
+    }
+    return null;
+  }
+  function isAdShowing() {
+    return Boolean(document.querySelector(".html5-video-player.ad-showing"));
+  }
 
-function setButtonDefaultState(button) {
-  let buttonSpan = button.querySelector('span') || button;
-  buttonSpan.innerHTML = downloadIcon;
-  styleChannelDownloadSegmentIcon(button);
-  buttonSpan.title = 'Queue download';
-  button.dataset.taState = 'download';
-  delete button.dataset.openUrl;
-}
-
-function setButtonQueuedState(button) {
-  let buttonSpan = button.querySelector('span') || button;
-  buttonSpan.innerHTML = queuedIcon;
-  styleChannelDownloadSegmentIcon(button);
-  buttonSpan.title = 'Queued';
-  button.dataset.taState = 'queued';
-  delete button.dataset.openUrl;
-}
-
-function setButtonOpenState(button, openUrl) {
-  let buttonSpan = button.querySelector('span') || button;
-  buttonSpan.innerHTML = checkmarkIcon;
-  styleChannelDownloadSegmentIcon(button);
-  buttonSpan.title = 'Open in TA';
-  button.dataset.taState = 'open';
-  button.dataset.openUrl = openUrl;
-}
-
-function sendUrl(url, action, button) {
-  function handleResponse(message) {
-    console.log('sendUrl response: ' + JSON.stringify(message));
-    if (!message || (typeof message === 'object' && message.detail === 'Invalid token.')) {
-      buttonError(button);
-    } else {
-      buttonSuccess(button);
+  // src/content-script/watch-progress.js
+  var watchAutoQueueRatioThreshold = 0.2;
+  var watchAutoQueueMinSeconds = 60;
+  var watchAutoQueueMaxSeconds = 600;
+  var watchAutoQueueShortRatioThreshold = 0.8;
+  var watchAutoQueueMaxDeltaSeconds = 2;
+  var watchAutoQueueRetryCooldownMs = 3e4;
+  var watchAutoQueueEnabled = false;
+  var watchProgressState = null;
+  function setWatchAutoQueueEnabled(value) {
+    watchAutoQueueEnabled = value;
+  }
+  async function loadWatchAutoQueuePreference() {
+    var _a;
+    try {
+      let stored = await browserApi.storage.local.get("watchAutoQueue");
+      watchAutoQueueEnabled = ((_a = stored == null ? void 0 : stored.watchAutoQueue) == null ? void 0 : _a.checked) === true;
+    } catch (error) {
+      console.error("failed to load watch auto queue preference", error);
+    }
+  }
+  function resetWatchProgressState(videoId = null) {
+    watchProgressState = {
+      videoId,
+      watchedSeconds: 0,
+      queued: false,
+      queueAttemptInFlight: false,
+      lastQueueAttemptAt: 0,
+      lastCurrentTime: null,
+      lastTickAt: null,
+      lastLoggedBucket: -1
+    };
+  }
+  function getWatchAutoQueueTargetSeconds(duration) {
+    if (duration <= watchAutoQueueMinSeconds) {
+      return duration * watchAutoQueueShortRatioThreshold;
+    }
+    return Math.min(
+      Math.max(duration * watchAutoQueueRatioThreshold, watchAutoQueueMinSeconds),
+      watchAutoQueueMaxSeconds
+    );
+  }
+  function logWatchProgress(message, metadata = {}) {
+    console.log("[TA auto queue]", message, metadata);
+  }
+  async function maybeAutoQueueVideo(videoId, state, reason) {
+    if (!videoId || !state || state.queueAttemptInFlight)
+      return false;
+    if (Date.now() - state.lastQueueAttemptAt < watchAutoQueueRetryCooldownMs)
+      return false;
+    state.queueAttemptInFlight = true;
+    state.lastQueueAttemptAt = Date.now();
+    logWatchProgress("queue attempt starting", { videoId, reason });
+    try {
+      let existingVideoUrl = await sendMessage({ type: "videoExists", videoId });
+      if (existingVideoUrl !== false) {
+        logWatchProgress("queue skipped because video already exists in TA", { videoId, reason });
+        state.queued = true;
+        return true;
+      }
+      await sendMessage({ type: "download", url: videoId });
+      logWatchProgress("queue request sent successfully", { videoId, reason });
+      state.queued = true;
+      return true;
+    } catch (error) {
+      console.error("[TA auto queue] queue request failed", { videoId, reason, error });
+    } finally {
+      if ((state == null ? void 0 : state.videoId) === videoId) {
+        state.queueAttemptInFlight = false;
+      }
+    }
+    return false;
+  }
+  async function maybeAutoQueueWatchedVideo(videoId) {
+    return maybeAutoQueueVideo(videoId, watchProgressState, "watched");
+  }
+  function trackWatchProgress() {
+    if (!watchAutoQueueEnabled)
+      return;
+    let videoId = getCurrentPlaybackVideoId();
+    if (!videoId) {
+      resetWatchProgressState();
+      return;
+    }
+    if (!watchProgressState || watchProgressState.videoId !== videoId) {
+      resetWatchProgressState(videoId);
+      logWatchProgress("tracking started", { videoId, pathname: window.location.pathname });
+    }
+    let player = getPlaybackPlayer();
+    if (!player || !Number.isFinite(player.duration) || player.duration <= 0 || isAdShowing()) {
+      if (!player) {
+        logWatchProgress("waiting for player element", { videoId });
+      }
+      watchProgressState.lastCurrentTime = null;
+      watchProgressState.lastTickAt = Date.now();
+      return;
+    }
+    const now = Date.now();
+    const currentTime = player.currentTime;
+    const duration = player.duration;
+    const lastCurrentTime = watchProgressState.lastCurrentTime;
+    const lastTickAt = watchProgressState.lastTickAt;
+    if (!player.paused && lastCurrentTime != null && lastTickAt != null) {
+      let deltaSeconds = currentTime - lastCurrentTime;
+      let elapsedSeconds = (now - lastTickAt) / 1e3;
+      if (deltaSeconds > 0 && deltaSeconds <= watchAutoQueueMaxDeltaSeconds && deltaSeconds <= elapsedSeconds + 0.5) {
+        watchProgressState.watchedSeconds += deltaSeconds;
+      }
+    }
+    watchProgressState.lastCurrentTime = currentTime;
+    watchProgressState.lastTickAt = now;
+    if (watchProgressState.queued)
+      return;
+    let targetSeconds = getWatchAutoQueueTargetSeconds(duration);
+    let progressBucket = Math.floor(watchProgressState.watchedSeconds / 15);
+    if (progressBucket > watchProgressState.lastLoggedBucket) {
+      watchProgressState.lastLoggedBucket = progressBucket;
+      logWatchProgress("progress update", {
+        videoId,
+        watchedSeconds: Math.round(watchProgressState.watchedSeconds),
+        targetSeconds: Math.round(targetSeconds),
+        duration: Math.round(duration)
+      });
+    }
+    if (watchProgressState.watchedSeconds >= targetSeconds) {
+      logWatchProgress("watch threshold reached", {
+        videoId,
+        watchedSeconds: Math.round(watchProgressState.watchedSeconds),
+        targetSeconds: Math.round(targetSeconds)
+      });
+      maybeAutoQueueWatchedVideo(videoId);
     }
   }
 
-  function handleError(e) {
-    console.log('error', e);
-    buttonError(button);
+  // src/content-script/like-tracker.js
+  var likeAutoQueueEnabled = false;
+  var likeQueueState = null;
+  function setLikeAutoQueueEnabled(value) {
+    likeAutoQueueEnabled = value;
+  }
+  async function loadLikeAutoQueuePreference() {
+    var _a;
+    try {
+      let stored = await browserApi.storage.local.get("likeAutoQueue");
+      likeAutoQueueEnabled = ((_a = stored == null ? void 0 : stored.likeAutoQueue) == null ? void 0 : _a.checked) === true;
+    } catch (error) {
+      console.error("failed to load like auto queue preference", error);
+    }
+  }
+  function resetLikeQueueState(videoId = null) {
+    likeQueueState = {
+      videoId,
+      queued: false,
+      queueAttemptInFlight: false,
+      lastQueueAttemptAt: 0,
+      lastLiked: false
+    };
+  }
+  function getLikeButtons() {
+    return [
+      ...document.querySelectorAll(
+        [
+          "like-button-view-model button[aria-pressed]",
+          "segmented-like-dislike-button-view-model button[aria-pressed]",
+          "ytd-toggle-button-renderer button[aria-pressed]",
+          "toggle-button-view-model button[aria-pressed]",
+          "like-button-view-model button",
+          "segmented-like-dislike-button-view-model button"
+        ].join(", ")
+      )
+    ];
+  }
+  function isLikeButton(button) {
+    var _a;
+    if (!button)
+      return false;
+    let label = [
+      button.getAttribute("aria-label"),
+      button.getAttribute("title"),
+      button.textContent,
+      (_a = button.closest("[aria-label]")) == null ? void 0 : _a.getAttribute("aria-label")
+    ].filter(Boolean).join(" ").toLowerCase();
+    return label.includes("like") || label.includes("mag ich") || label.includes("gef\xE4llt");
+  }
+  function getCurrentLikeButton() {
+    var _a;
+    let playbackContainer = getCurrentPlaybackContainer();
+    if (playbackContainer) {
+      let buttonInPlaybackContainer = [...playbackContainer.querySelectorAll("button")].find(
+        (button) => isLikeButton(button)
+      );
+      if (buttonInPlaybackContainer)
+        return buttonInPlaybackContainer;
+    }
+    let videoId = getCurrentPlaybackVideoId();
+    if (window.location.pathname.startsWith("/shorts/") && videoId) {
+      let matchingShortsContainer = [...document.querySelectorAll("ytd-reel-video-renderer")].find(
+        (container) => {
+          let link = container.querySelector(shortsLinkSelector);
+          return parseShortsVideoIdFromHref(link == null ? void 0 : link.getAttribute("href")) === videoId;
+        }
+      );
+      let buttonInMatchingShortsContainer = [
+        ...(matchingShortsContainer == null ? void 0 : matchingShortsContainer.querySelectorAll("button")) || []
+      ].find((button) => isLikeButton(button));
+      if (buttonInMatchingShortsContainer)
+        return buttonInMatchingShortsContainer;
+    }
+    let visibleLikeButtons = getLikeButtons().filter((button) => isLikeButton(button)).map((button) => ({ button, area: getElementViewportIntersectionArea(button) })).filter((item) => item.area > 0).sort((left, right) => right.area - left.area);
+    return ((_a = visibleLikeButtons[0]) == null ? void 0 : _a.button) || null;
+  }
+  function isVideoLiked(button) {
+    return (button == null ? void 0 : button.getAttribute("aria-pressed")) === "true";
+  }
+  function trackLikedVideoState() {
+    if (!likeAutoQueueEnabled)
+      return;
+    let videoId = getCurrentPlaybackVideoId();
+    if (!videoId) {
+      resetLikeQueueState();
+      return;
+    }
+    if (!likeQueueState || likeQueueState.videoId !== videoId) {
+      resetLikeQueueState(videoId);
+      logWatchProgress("like tracking started", { videoId, pathname: window.location.pathname });
+    }
+    let likeButton = getCurrentLikeButton();
+    if (!likeButton) {
+      logWatchProgress("waiting for like button", { videoId });
+      return;
+    }
+    let liked = isVideoLiked(likeButton);
+    if (liked && !likeQueueState.lastLiked && !likeQueueState.queued) {
+      logWatchProgress("like detected", { videoId });
+      maybeAutoQueueVideo(videoId, likeQueueState, "liked");
+    }
+    likeQueueState.lastLiked = liked;
   }
 
-  let message = { type: action, url };
-
-  console.log('youtube link: ' + JSON.stringify(message));
-
-  let sending = sendMessage(message);
-  sending.then(handleResponse, handleError);
-}
-
-async function sendMessage(message) {
-  let response;
-  try {
-    response = await browserType.runtime.sendMessage(message);
-  } catch (e) {
-    if (e?.message?.includes('Extension context invalidated')) return;
-    throw e;
+  // src/content-script/button-factory.js
+  function stopYouTubeThumbnailEvent(event) {
+    var _a;
+    event.preventDefault();
+    event.stopPropagation();
+    (_a = event.stopImmediatePropagation) == null ? void 0 : _a.call(event);
   }
-  let { success, value } = response;
-  if (!success) {
-    throw value;
+  function captureDownloadButtonPointerEvents(element) {
+    ["pointerdown", "mousedown", "mouseup", "touchstart", "touchend"].forEach((eventName) => {
+      element.addEventListener(eventName, stopYouTubeThumbnailEvent, true);
+    });
   }
-  return value;
-}
+  function createRoundedDownloadButton(videoId, options = {}) {
+    let {
+      title = `${t("download_video", "TA download video")}: ${videoId}`,
+      size = 32,
+      iconSize = 16,
+      ghostReveal = false,
+      asButton = false
+    } = options;
+    let dlButton = document.createElement(asButton ? "button" : "a");
+    dlButton.classList.add("ta-button", "ta-button-rounded", "ta-hover-action");
+    if (ghostReveal) {
+      dlButton.classList.add("ta-button-ghost-reveal");
+    }
+    if (asButton) {
+      dlButton.type = "button";
+    } else {
+      dlButton.href = "#";
+    }
+    dlButton.setAttribute("data-id", videoId);
+    dlButton.setAttribute("data-type", "video");
+    dlButton.title = title;
+    dlButton.style.width = `${size}px`;
+    dlButton.style.height = `${size}px`;
+    let dlIcon = document.createElement("span");
+    dlIcon.innerHTML = downloadIcon;
+    dlIcon.style.width = `${iconSize}px`;
+    dlIcon.style.height = `${iconSize}px`;
+    dlButton.appendChild(dlIcon);
+    dlButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      sendDownload(dlButton);
+      e.stopPropagation();
+    });
+    captureDownloadButtonPointerEvents(dlButton);
+    return dlButton;
+  }
+  function buildVideoButton(videoId, titleContainer, variant = "default") {
+    let usesRoundedDesign = variant === "thumbnail-hover-actions" || variant === "lockup-menu-below" || variant === "playlist-menu-below" || variant === "shorts-grid";
+    let roundedSize = variant === "lockup-menu-below" || variant === "playlist-menu-below" ? 36 : 32;
+    let roundedIconSize = variant === "lockup-menu-below" || variant === "playlist-menu-below" ? 18 : 16;
+    if (usesRoundedDesign) {
+      let roundedButton = createRoundedDownloadButton(videoId, {
+        title: `${t("download_video", "TA download video")}: ${titleContainer.innerText} [${videoId}]`,
+        size: roundedSize,
+        iconSize: roundedIconSize,
+        ghostReveal: variant === "lockup-menu-below" || variant === "playlist-menu-below" || variant === "shorts-grid",
+        asButton: variant === "thumbnail-hover-actions" || variant === "shorts-grid"
+      });
+      roundedButton.classList.add(`ta-variant-${variant}`);
+      return roundedButton;
+    }
+    let dlButton = document.createElement("a");
+    dlButton.classList.add("ta-button", "ta-button-rect", `ta-variant-${variant}`);
+    dlButton.href = "#";
+    dlButton.setAttribute("data-id", videoId);
+    dlButton.setAttribute("data-type", "video");
+    dlButton.title = `${t("download_video", "TA download video")}: ${titleContainer.innerText} [${videoId}]`;
+    let dlIcon = document.createElement("span");
+    dlIcon.innerHTML = downloadIcon;
+    dlIcon.style.width = "16px";
+    dlIcon.style.height = "16px";
+    dlButton.appendChild(dlIcon);
+    dlButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      sendDownload(dlButton);
+      e.stopPropagation();
+    });
+    captureDownloadButtonPointerEvents(dlButton);
+    return dlButton;
+  }
+  function styleChannelDownloadSegmentIcon(button) {
+    if (!button.classList.contains("ta-channel-download-segment"))
+      return;
+    let iconWrapper = button.querySelector(".ta-channel-download-icon-wrap");
+    if (!iconWrapper) {
+      let icon = button.querySelector("svg");
+      if (!icon)
+        return;
+      iconWrapper = document.createElement("span");
+      iconWrapper.classList.add("ta-channel-download-icon-wrap");
+      icon.replaceWith(iconWrapper);
+      iconWrapper.appendChild(icon);
+    }
+  }
+  function setButtonDefaultState(button) {
+    let buttonSpan = button.querySelector("span") || button;
+    buttonSpan.innerHTML = downloadIcon;
+    styleChannelDownloadSegmentIcon(button);
+    buttonSpan.title = t("queue_download", "Queue download");
+    button.dataset.taState = "download";
+    delete button.dataset.openUrl;
+  }
+  function setButtonOpenState(button, openUrl) {
+    let buttonSpan = button.querySelector("span") || button;
+    buttonSpan.innerHTML = checkmarkIcon;
+    styleChannelDownloadSegmentIcon(button);
+    buttonSpan.title = t("open_in_ta", "Open in TA");
+    button.dataset.taState = "open";
+    button.dataset.openUrl = openUrl;
+  }
+  function buttonError(button) {
+    button.dataset.taState = "error";
+  }
+  function buttonSuccess(button) {
+    let buttonSpan = button.querySelector("span");
+    if (buttonSpan === null) {
+      buttonSpan = button;
+    }
+    if (buttonSpan.innerHTML === "Subscribe") {
+      buttonSpan.innerHTML = t("success", "Success");
+      setTimeout(() => {
+        buttonSpan.innerHTML = t("unsubscribe", "Unsubscribe");
+      }, 2e3);
+    } else if (buttonSpan.innerHTML === "Unsubscribe") {
+      buttonSpan.innerHTML = t("success", "Success");
+      setTimeout(() => {
+        buttonSpan.innerHTML = t("subscribe", "Subscribe");
+      }, 2e3);
+    } else {
+      setButtonOpenState(button, button.dataset.openUrl);
+    }
+  }
+  function sendUrl(url, action, button) {
+    function handleResponse(message2) {
+      console.log("sendUrl response: " + JSON.stringify(message2));
+      if (!message2 || typeof message2 === "object" && message2.detail === "Invalid token.") {
+        buttonError(button);
+      } else {
+        buttonSuccess(button);
+      }
+    }
+    function handleError(e) {
+      console.log("error", e);
+      buttonError(button);
+    }
+    let message = { type: action, url };
+    console.log("youtube link: " + JSON.stringify(message));
+    let sending = sendMessage(message);
+    sending.then(handleResponse, handleError);
+  }
+  function sendDownload(button) {
+    var _a;
+    if (button.dataset.taState === "open" && button.dataset.openUrl) {
+      let win = window.open(button.dataset.openUrl, "_blank");
+      (_a = win == null ? void 0 : win.focus) == null ? void 0 : _a.call(win);
+      return;
+    }
+    let url = button.dataset.id;
+    if (!url)
+      return;
+    sendUrl(url, "download", button);
+  }
+  function checkChannelSubscribed(channelSubButton) {
+    function handleResponse(message2) {
+      if (!message2 || typeof message2 === "object" && message2.channel_subscribed === false) {
+        channelSubButton.innerText = t("subscribe", "Subscribe");
+      } else if (typeof message2 === "object" && message2.channel_subscribed === true) {
+        channelSubButton.innerText = t("unsubscribe", "Unsubscribe");
+      } else {
+        console.log("Unknown state");
+      }
+    }
+    function handleError(e) {
+      buttonError(channelSubButton);
+      channelSubButton.innerText = t("error", "Error");
+      console.error("error", e);
+    }
+    let channelHandle = channelSubButton.dataset.id;
+    let message = { type: "getChannel", channelHandle };
+    let sending = sendMessage(message);
+    sending.then(handleResponse, handleError);
+  }
+  function buildSpacer() {
+    let spacer = document.createElement("span");
+    spacer.setAttribute("aria-hidden", "true");
+    spacer.classList.add("ta-channel-button-spacer");
+    return spacer;
+  }
+  function buildChannelSubButton(channelHandle) {
+    let channelSubButton = document.createElement("span");
+    channelSubButton.classList.add("ta-channel-sub-button");
+    channelSubButton.innerText = t("checking", "Checking...");
+    channelSubButton.title = `${t("subscribe_to", "TA Subscribe")}: ${channelHandle}`;
+    channelSubButton.setAttribute("data-id", channelHandle);
+    channelSubButton.setAttribute("data-type", "channel");
+    channelSubButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (channelSubButton.innerText === t("subscribe", "Subscribe")) {
+        console.log(`subscribe to: ${channelHandle}`);
+        sendUrl(channelHandle, "subscribe", channelSubButton);
+      } else if (channelSubButton.innerText === t("unsubscribe", "Unsubscribe")) {
+        console.log(`unsubscribe from: ${channelHandle}`);
+        sendUrl(channelHandle, "unsubscribe", channelSubButton);
+      } else {
+        console.log("Unknown state");
+      }
+      e.stopPropagation();
+    });
+    checkChannelSubscribed(channelSubButton);
+    return channelSubButton;
+  }
+  function buildChannelDownloadButton() {
+    let channelDownloadButton = document.createElement("span");
+    channelDownloadButton.classList.add("ta-channel-download-segment", "ta-channel-download-button");
+    let currentLocation = window.location.href;
+    let urlObj = new URL(currentLocation);
+    if (urlObj.pathname.startsWith("/watch")) {
+      let params = new URLSearchParams(document.location.search);
+      let videoId = params.get("v");
+      channelDownloadButton.setAttribute("data-type", "video");
+      channelDownloadButton.setAttribute("data-id", videoId);
+      channelDownloadButton.title = `${t("download_video", "TA download video")}: ${videoId}`;
+    } else {
+      channelDownloadButton.setAttribute("data-id", currentLocation);
+      channelDownloadButton.setAttribute("data-type", "channel");
+      channelDownloadButton.title = `${t(
+        "download_channel",
+        "TA download channel"
+      )}: ${currentLocation}`;
+    }
+    channelDownloadButton.innerHTML = downloadIcon;
+    styleChannelDownloadSegmentIcon(channelDownloadButton);
+    channelDownloadButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      console.log(`download: ${currentLocation}`);
+      sendDownload(channelDownloadButton);
+      e.stopPropagation();
+    });
+    if (channelDownloadButton.dataset.type === "video") {
+      checkVideoExists(channelDownloadButton, setButtonOpenState, setButtonDefaultState, buttonError);
+    }
+    return channelDownloadButton;
+  }
+  function buildChannelButtonDiv() {
+    let buttonDiv = document.createElement("div");
+    buttonDiv.classList.add("ta-channel-button", "ta-channel-button-container");
+    let isWatchPage = window.location.pathname.startsWith("/watch");
+    if (isWatchPage) {
+      buttonDiv.classList.add("ta-on-watch-page");
+    }
+    return buttonDiv;
+  }
+  function buildChannelButton(channelHandle) {
+    let container = buildChannelButtonDiv();
+    let subBtn = buildChannelSubButton(channelHandle);
+    let spacer = buildSpacer();
+    let dlBtn = buildChannelDownloadButton();
+    container.appendChild(subBtn);
+    container.appendChild(spacer);
+    container.appendChild(dlBtn);
+    return container;
+  }
 
-function cleanButtons() {
-  console.log('trigger clean buttons');
-  document.querySelectorAll('.ta-button').forEach(button => {
-    button.parentElement.hasTA = false;
-    button.remove();
+  // src/content-script/index.js
+  var injectThrottleMs = 120;
+  var watchAutoQueuePollMs = 1e3;
+  function throttled(callback, time) {
+    let throttleBlock = false;
+    let lastArgs;
+    return (...args) => {
+      lastArgs = args;
+      if (throttleBlock)
+        return;
+      throttleBlock = true;
+      setTimeout(() => {
+        throttleBlock = false;
+        callback(...lastArgs);
+      }, time);
+    };
+  }
+  function isElementVisible(element) {
+    if (!element || !element.isConnected)
+      return false;
+    if (element.closest("template"))
+      return false;
+    let style = window.getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden";
+  }
+  function getChannelContainers() {
+    const elements = document.querySelectorAll(
+      "yt-flexible-actions-view-model.ytPageHeaderViewModelFlexibleActions, #owner"
+    );
+    return elements;
+  }
+  function getTitleContainers() {
+    let elements = document.querySelectorAll(titleContainerSelector);
+    let videoNodes = [];
+    let seenCards = /* @__PURE__ */ new Set();
+    elements.forEach((element) => {
+      if (!isElementVisible(element))
+        return;
+      let cardRoot = getVideoCardRoot(element);
+      if (!cardRoot || seenCards.has(cardRoot))
+        return;
+      let videoId = getVideoId(element);
+      if (!videoId)
+        return;
+      element.taVideoId = videoId;
+      seenCards.add(cardRoot);
+      videoNodes.push(element);
+    });
+    return videoNodes;
+  }
+  function getVideoId(titleContainer) {
+    var _a;
+    return (_a = getVideoInfo(titleContainer)) == null ? void 0 : _a.videoId;
+  }
+  function getVideoInfo(titleContainer) {
+    var _a;
+    if (!titleContainer)
+      return null;
+    let href = getNearestLink(titleContainer);
+    if (!href)
+      return null;
+    if (((_a = titleContainer.taVideoInfo) == null ? void 0 : _a.href) === href)
+      return titleContainer.taVideoInfo;
+    try {
+      let url = new URL(href, location.href);
+      let videoId;
+      if (url.pathname === "/watch") {
+        videoId = url.searchParams.get("v") || void 0;
+      } else if (url.pathname.startsWith("/shorts/")) {
+        videoId = url.pathname.split("/")[2] || void 0;
+      }
+      if (!videoId)
+        return null;
+      titleContainer.taVideoInfo = {
+        href,
+        isShorts: url.pathname.startsWith("/shorts/"),
+        videoId
+      };
+      titleContainer.taVideoId = videoId;
+      return titleContainer.taVideoInfo;
+    } catch {
+    }
+    return null;
+  }
+  function getVideoCardRoot(titleContainer) {
+    if (!titleContainer)
+      return null;
+    if (titleContainer.taCardRoot)
+      return titleContainer.taCardRoot;
+    let cardRoot = titleContainer.closest(videoCardRootSelector);
+    if (!cardRoot) {
+      let parent = titleContainer.parentElement;
+      while (parent && parent !== document.body) {
+        let tag = parent.tagName.toLowerCase();
+        if ((tag.includes("-renderer") || tag.includes("-view-model")) && !tag.includes("comment") && !tag.includes("post") && !tag.includes("channel") && !(tag.includes("playlist") && !tag.includes("playlist-video"))) {
+          cardRoot = parent;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    }
+    if (cardRoot) {
+      titleContainer.taCardRoot = cardRoot;
+    }
+    return cardRoot;
+  }
+  function isShortsCardTitle(titleContainer) {
+    var _a;
+    return Boolean((_a = getVideoInfo(titleContainer)) == null ? void 0 : _a.isShorts);
+  }
+  function getVideoButtonPlacement(titleContainer) {
+    var _a, _b;
+    let playlistRenderer = titleContainer.closest("ytd-playlist-video-renderer");
+    if (playlistRenderer) {
+      let menuContainer = playlistRenderer.querySelector("#menu");
+      if (menuContainer) {
+        return {
+          container: menuContainer,
+          variant: "playlist-menu-below"
+        };
+      }
+    }
+    let hoverActionsContainer = getThumbnailHoverActionsContainer(titleContainer);
+    if (hoverActionsContainer) {
+      return {
+        container: hoverActionsContainer,
+        variant: "thumbnail-hover-actions"
+      };
+    }
+    let lockupContainer = titleContainer.closest(
+      "yt-lock-up-metadata-view-model, yt-lockup-metadata-view-model"
+    );
+    if (lockupContainer) {
+      let host = lockupContainer.closest(".ytLockupViewModelHost") || lockupContainer.closest('[class*="ytLockupViewModelHost"]');
+      let isHorizontalLockup = ((_a = host == null ? void 0 : host.classList) == null ? void 0 : _a.contains("ytLockupViewModelHorizontal")) || ((_b = host == null ? void 0 : host.className) == null ? void 0 : _b.includes("Horizontal"));
+      if (isHorizontalLockup && lockupContainer.classList.contains("ytLockupMetadataViewModelCompact")) {
+        return {
+          container: lockupContainer,
+          variant: "lockup-menu-below"
+        };
+      }
+      if (lockupContainer.classList.contains("ytLockupMetadataViewModelCompact")) {
+        return null;
+      }
+      if (isHorizontalLockup) {
+        return null;
+      }
+      return {
+        container: lockupContainer,
+        insertBefore: lockupContainer.querySelector('[class*="MenuButton"]') || lockupContainer.querySelector(".ytLockupMetadataViewModelMenuButton"),
+        variant: "lockup"
+      };
+    }
+    if (isShortsCardTitle(titleContainer)) {
+      let container2 = getVideoCardRoot(titleContainer);
+      if (!container2)
+        return null;
+      return { container: container2, variant: "shorts-grid" };
+    }
+    let container = getTitleOverlayContainer(titleContainer);
+    if (!container)
+      return null;
+    return { container, variant: "default" };
+  }
+  function getThumbnailHoverActionsContainer(titleContainer) {
+    let cardRoot = getVideoCardRoot(titleContainer);
+    if (!cardRoot)
+      return null;
+    return cardRoot.querySelector("yt-thumbnail-hover-overlay-toggle-actions-view-model");
+  }
+  function isUpcomingVideoCard(titleContainer) {
+    const cardRoot = getVideoCardRoot(titleContainer);
+    if (!cardRoot)
+      return false;
+    return Boolean(
+      cardRoot.querySelector(
+        "lockup-attachments-view-model yt-flexible-actions-view-model toggle-button-view-model"
+      )
+    );
+  }
+  function getNearestLink(element) {
+    if (!element)
+      return null;
+    if (element.matches(videoLinkSelector)) {
+      return element.getAttribute("href");
+    }
+    let closestLink = element.closest(videoLinkSelector);
+    if (closestLink) {
+      return closestLink.getAttribute("href");
+    }
+    let cardRoot = getVideoCardRoot(element);
+    let cardLink = cardRoot == null ? void 0 : cardRoot.querySelector(videoLinkSelector);
+    if (cardLink) {
+      return cardLink.getAttribute("href");
+    }
+    let sibling = element;
+    while (sibling) {
+      sibling = sibling.previousElementSibling;
+      if (sibling && sibling.tagName === "A" && sibling.getAttribute("href") !== "#") {
+        return sibling.getAttribute("href");
+      }
+    }
+    sibling = element;
+    while (sibling) {
+      sibling = sibling.nextElementSibling;
+      if (sibling && sibling.tagName === "A" && sibling.getAttribute("href") !== "#") {
+        return sibling.getAttribute("href");
+      }
+    }
+    for (let i = 0; i < 5 && element && element !== document; i++) {
+      if (element.tagName === "A" && element.getAttribute("href") !== "#") {
+        return element.getAttribute("href");
+      }
+      element = element.parentNode;
+    }
+    return null;
+  }
+  function getTitleOverlayContainer(titleContainer) {
+    var _a;
+    let titleWrapper = titleContainer == null ? void 0 : titleContainer.closest("#title-wrapper");
+    if (titleWrapper)
+      return titleWrapper;
+    let element = titleContainer;
+    for (let i = 0; i < 5 && element && element !== document; i++) {
+      if (element.tagName === "H3") {
+        return element;
+      }
+      element = element.parentNode;
+    }
+    let parent = titleContainer == null ? void 0 : titleContainer.parentElement;
+    if (parent && parent.tagName !== "A")
+      return parent;
+    parent = (_a = titleContainer == null ? void 0 : titleContainer.parentElement) == null ? void 0 : _a.parentElement;
+    if (parent && parent.tagName !== "A")
+      return parent;
+    return null;
+  }
+  function prepareVideoButtonContainer(container, taButton) {
+    if (taButton.classList.contains("ta-button-ghost-reveal")) {
+      if (!container.style.position) {
+        container.style.position = "relative";
+      }
+      let playlistHost = container.closest("ytd-playlist-video-renderer");
+      if (playlistHost && container.id === "menu") {
+        Object.assign(container.style, {
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px"
+        });
+      }
+      let hoverHost = playlistHost || container;
+      if (!hoverHost.taHoverRevealListener) {
+        hoverHost.addEventListener("mouseenter", () => {
+          let currentBtn = hoverHost.querySelector(".ta-button");
+          if (currentBtn) {
+            currentBtn.classList.add("ta-visible");
+            if (!currentBtn.isChecked) {
+              checkVideoExists(currentBtn, setButtonOpenState, setButtonDefaultState, buttonError);
+            }
+          }
+        });
+        hoverHost.addEventListener("mouseleave", () => {
+          let currentBtn = hoverHost.querySelector(".ta-button");
+          if (currentBtn) {
+            currentBtn.classList.remove("ta-visible");
+          }
+        });
+        hoverHost.taHoverRevealListener = true;
+      }
+      return;
+    }
+    if (taButton.classList.contains("ta-hover-action")) {
+      return;
+    }
+    if (!container.style.position) {
+      container.style.position = "relative";
+    }
+    if (!container.hasListener) {
+      container.classList.add("title-container");
+      container.addEventListener("mouseenter", () => {
+        let currentBtn = container.querySelector(".ta-button");
+        if (currentBtn) {
+          if (!currentBtn.isChecked) {
+            checkVideoExists(currentBtn, setButtonOpenState, setButtonDefaultState, buttonError);
+          }
+          currentBtn.classList.add("ta-visible");
+        }
+      });
+      container.addEventListener("mouseleave", () => {
+        let currentBtn = container.querySelector(".ta-button");
+        if (currentBtn) {
+          currentBtn.classList.remove("ta-visible");
+        }
+      });
+      container.hasListener = true;
+    }
+  }
+  function findExistingVideoButton(titleContainer, placement = null) {
+    var _a, _b;
+    let videoId = getVideoId(titleContainer);
+    if (!videoId)
+      return null;
+    let selector = `.ta-button[data-id="${CSS.escape(videoId)}"]`;
+    return ((_a = placement == null ? void 0 : placement.container) == null ? void 0 : _a.querySelector(selector)) || ((_b = getVideoCardRoot(titleContainer)) == null ? void 0 : _b.querySelector(selector)) || null;
+  }
+  function ensureThumbnailHoverOverlayButtons() {
+    let overlays = document.querySelectorAll("yt-thumbnail-hover-overlay-toggle-actions-view-model");
+    for (let overlay of overlays) {
+      ensureThumbnailHoverOverlayButton(overlay);
+    }
+  }
+  function ensureShortsThumbnailFallbackButtons() {
+    let thumbnails = document.querySelectorAll("yt-thumbnail-view-model");
+    for (let thumbnail of thumbnails) {
+      if (thumbnail.querySelector("yt-thumbnail-hover-overlay-toggle-actions-view-model"))
+        continue;
+      let videoId = getVideoIdForThumbnailViewModel(thumbnail);
+      if (!videoId)
+        continue;
+      if (!isShortsVideoHref(getVideoHrefForThumbnailViewModel(thumbnail)))
+        continue;
+      let container = thumbnail.parentElement || thumbnail;
+      let existingButton = container.querySelector(".ta-button");
+      if (existingButton) {
+        if (existingButton.dataset.id !== videoId) {
+          existingButton.setAttribute("data-id", videoId);
+          existingButton.title = `${t("download_video", "TA download video")}: ${videoId}`;
+          existingButton.isChecked = false;
+          checkVideoExists(existingButton, setButtonOpenState, setButtonDefaultState, buttonError);
+        }
+        continue;
+      }
+      let lockupHost = thumbnail.closest(".ytLockupViewModelHost");
+      let hasCompactMenuPlacement = Boolean(
+        lockupHost == null ? void 0 : lockupHost.querySelector(
+          "yt-lockup-metadata-view-model.ytLockupMetadataViewModelCompact .ytLockupMetadataViewModelMenuButton"
+        )
+      );
+      if (hasCompactMenuPlacement)
+        continue;
+      if (!container.style.position) {
+        container.style.position = "relative";
+      }
+      let button = createRoundedDownloadButton(videoId, {
+        title: `${t("download_video", "TA download video")}: ${videoId}`,
+        size: 32,
+        iconSize: 16,
+        asButton: true
+      });
+      button.classList.add("ta-variant-shorts-grid");
+      container.appendChild(button);
+      checkVideoExists(button, setButtonOpenState, setButtonDefaultState, buttonError);
+    }
+  }
+  function getVideoIdForHoverOverlay(overlay) {
+    let cardRoot = overlay.closest(videoCardRootSelector);
+    if (!cardRoot)
+      return null;
+    let link = cardRoot.querySelector(videoLinkSelector);
+    let href = link == null ? void 0 : link.getAttribute("href");
+    if (!href)
+      return null;
+    try {
+      let url = new URL(href, location.href);
+      if (url.pathname === "/watch") {
+        return url.searchParams.get("v");
+      }
+      if (url.pathname.startsWith("/shorts/")) {
+        return url.pathname.split("/")[2] || null;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  function getVideoIdForThumbnailViewModel(thumbnail) {
+    let href = getVideoHrefForThumbnailViewModel(thumbnail);
+    if (!href)
+      return null;
+    try {
+      let url = new URL(href, location.href);
+      if (url.pathname === "/watch") {
+        return url.searchParams.get("v");
+      }
+      if (url.pathname.startsWith("/shorts/")) {
+        return url.pathname.split("/")[2] || null;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  function getVideoHrefForThumbnailViewModel(thumbnail) {
+    let cardRoot = thumbnail.closest(videoCardRootSelector);
+    if (!cardRoot)
+      return null;
+    let link = cardRoot.querySelector(videoLinkSelector);
+    return (link == null ? void 0 : link.getAttribute("href")) || null;
+  }
+  function isShortsVideoHref(href) {
+    if (!href)
+      return false;
+    try {
+      return new URL(href, location.href).pathname.startsWith("/shorts/");
+    } catch {
+      return false;
+    }
+  }
+  function buildHoverOverlayVideoButton(videoId) {
+    return createRoundedDownloadButton(videoId, {
+      title: `${t("download_video", "TA download video")}: ${videoId}`,
+      size: 32,
+      iconSize: 16,
+      asButton: true
+    });
+  }
+  function ensureThumbnailHoverOverlayButton(overlay) {
+    if (!overlay)
+      return false;
+    let videoId = getVideoIdForHoverOverlay(overlay);
+    if (!videoId)
+      return false;
+    let existingButton = overlay.querySelector(".ta-button");
+    if (existingButton) {
+      if (existingButton.dataset.id !== videoId) {
+        existingButton.setAttribute("data-id", videoId);
+        existingButton.title = `${t("download_video", "TA download video")}: ${videoId}`;
+        existingButton.isChecked = false;
+        checkVideoExists(existingButton, setButtonOpenState, setButtonDefaultState, buttonError);
+      }
+      return true;
+    }
+    let actionRow = document.createElement("div");
+    actionRow.className = "ytThumbnailHoverOverlayToggleActionsViewModelButton";
+    actionRow.style.zIndex = 2018;
+    actionRow.style.pointerEvents = "auto";
+    ["pointerdown", "mousedown", "mouseup", "touchstart", "touchend"].forEach((eventName) => {
+      actionRow.addEventListener(
+        eventName,
+        (e) => {
+          var _a;
+          e.preventDefault();
+          e.stopPropagation();
+          (_a = e.stopImmediatePropagation) == null ? void 0 : _a.call(e);
+        },
+        true
+      );
+    });
+    let taButton = buildHoverOverlayVideoButton(videoId);
+    actionRow.appendChild(taButton);
+    overlay.appendChild(actionRow);
+    checkVideoExists(taButton, setButtonOpenState, setButtonDefaultState, buttonError);
+    return true;
+  }
+  function ensureThumbnailHoverOverlayButtonNear(element) {
+    if (!element)
+      return;
+    let origin = element instanceof Element ? element : element.parentElement || element.parentNode || null;
+    if (!(origin instanceof Element))
+      return;
+    let cardRoot = origin.closest(videoCardRootSelector);
+    if (!cardRoot)
+      return;
+    let tryInject = () => {
+      let overlay = cardRoot.querySelector("yt-thumbnail-hover-overlay-toggle-actions-view-model");
+      if (!overlay)
+        return false;
+      return ensureThumbnailHoverOverlayButton(overlay);
+    };
+    if (tryInject())
+      return;
+    requestAnimationFrame(() => {
+      if (tryInject())
+        return;
+      requestAnimationFrame(() => {
+        tryInject();
+      });
+    });
+  }
+  function adjustOwner(channelContainer) {
+    return channelContainer.querySelector(".ytFlexibleActionsViewModelActionRow") || channelContainer.querySelector("#buttons") || channelContainer;
+  }
+  function getChannelHandle(channelContainer) {
+    function findHandleString(container) {
+      let result = null;
+      function recursiveTraversal(element) {
+        for (let child of element.children) {
+          if (child.tagName === "A" && child.hasAttribute("href")) {
+            const href = child.getAttribute("href");
+            const match = href.match(/\/@[^/]+/);
+            if (match) {
+              result = match[0].substring(1);
+              return;
+            }
+          }
+          if (child.children.length === 0 && child.textContent.trim().startsWith("@")) {
+            result = child.textContent.trim();
+            return;
+          }
+          recursiveTraversal(child);
+          if (result)
+            return;
+        }
+      }
+      recursiveTraversal(container);
+      return result;
+    }
+    let channelHandle = findHandleString(channelContainer.parentElement);
+    return channelHandle;
+  }
+  function buildShortsButton() {
+    let videoId = window.location.pathname.split("/")[2];
+    if (!videoId)
+      return null;
+    let wrapper = document.createElement("div");
+    wrapper.classList.add("ta-shorts-button-wrapper");
+    let btn = document.createElement("button");
+    btn.setAttribute("data-id", videoId);
+    btn.setAttribute("data-type", "video");
+    btn.title = `${t("download_video", "TA download video")}: ${videoId}`;
+    btn.classList.add("ta-shorts-button", "ta-hover-action");
+    let iconSpan = document.createElement("span");
+    iconSpan.innerHTML = downloadIcon;
+    iconSpan.classList.add("ta-shorts-button-icon");
+    btn.appendChild(iconSpan);
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      sendDownload(btn);
+      e.stopPropagation();
+    });
+    captureDownloadButtonPointerEvents(btn);
+    let label = document.createElement("div");
+    label.innerText = "TA";
+    label.style.setProperty("color", "white", "important");
+    label.style.fontSize = "12px";
+    label.style.fontWeight = "500";
+    wrapper.appendChild(btn);
+    wrapper.appendChild(label);
+    return { wrapper, btn };
+  }
+  function getShortsContainer() {
+    if (!window.location.pathname.startsWith("/shorts/"))
+      return null;
+    return document.querySelector("reel-action-bar-view-model");
+  }
+  function ensureTALinks() {
+    ensureThumbnailHoverOverlayButtons();
+    ensureShortsThumbnailFallbackButtons();
+    let shortsContainer = getShortsContainer();
+    if (shortsContainer) {
+      if (shortsContainer.hasTA && !shortsContainer.querySelector(".ta-shorts-button")) {
+        shortsContainer.hasTA = false;
+      }
+      if (!shortsContainer.hasTA) {
+        let result = buildShortsButton();
+        if (result) {
+          let { wrapper, btn } = result;
+          shortsContainer.insertBefore(wrapper, shortsContainer.firstElementChild);
+          shortsContainer.hasTA = true;
+          checkVideoExists(btn, setButtonOpenState, setButtonDefaultState, buttonError);
+        }
+      }
+    }
+    let channelContainerNodes = getChannelContainers();
+    for (let channelContainer of channelContainerNodes) {
+      channelContainer = adjustOwner(channelContainer);
+      if (channelContainer.hasTA && !channelContainer.querySelector(".ta-channel-button")) {
+        channelContainer.hasTA = false;
+      }
+      if (channelContainer.hasTA)
+        continue;
+      let channelButton = buildChannelButton(getChannelHandle(channelContainer));
+      channelContainer.appendChild(channelButton);
+      channelContainer.hasTA = true;
+    }
+    let titleContainerNodes = getTitleContainers();
+    for (let titleContainer of titleContainerNodes) {
+      let placement = getVideoButtonPlacement(titleContainer);
+      if (!placement)
+        continue;
+      let videoId = getVideoId(titleContainer);
+      if (!videoId)
+        continue;
+      if (isUpcomingVideoCard(titleContainer))
+        continue;
+      let existingInTarget = placement.container.querySelector(".ta-button");
+      if (existingInTarget && existingInTarget.dataset.id !== videoId) {
+        existingInTarget.remove();
+        existingInTarget = null;
+      }
+      let existingButton = findExistingVideoButton(titleContainer, placement);
+      if (existingInTarget)
+        continue;
+      if (existingButton && existingButton.parentElement === placement.container)
+        continue;
+      if (existingButton && existingButton.parentElement) {
+        existingButton.remove();
+      }
+      let videoButton = buildVideoButton(videoId, titleContainer, placement.variant);
+      if (videoButton == null)
+        continue;
+      prepareVideoButtonContainer(placement.container, videoButton);
+      if (placement.insertBefore) {
+        placement.container.insertBefore(videoButton, placement.insertBefore);
+      } else {
+        placement.container.appendChild(videoButton);
+      }
+    }
+  }
+  var ensureTALinksThrottled = throttled(ensureTALinks, injectThrottleMs);
+  function cleanButtons() {
+    console.log("trigger clean buttons");
+    document.querySelectorAll(".ta-button").forEach((button) => {
+      if (button.parentElement)
+        button.parentElement.hasTA = false;
+      button.remove();
+    });
+    document.querySelectorAll(".ta-channel-button").forEach((button) => {
+      if (button.parentElement)
+        button.parentElement.hasTA = false;
+      button.remove();
+    });
+    document.querySelectorAll(".ta-shorts-button-wrapper").forEach((button) => {
+      if (button.parentElement)
+        button.parentElement.hasTA = false;
+      button.remove();
+    });
+  }
+  var oldHref = document.location.href;
+  var navigationRefreshTimer = null;
+  var handleLikeButtonClick = throttled(() => {
+    window.setTimeout(trackLikedVideoState, 50);
+    window.setTimeout(trackLikedVideoState, 250);
+  }, 200);
+  function handleHoverOverlayPointer(event) {
+    ensureThumbnailHoverOverlayButtonNear(event.target);
+  }
+  var observer = new MutationObserver((list) => {
+    const currentHref = document.location.href;
+    if (currentHref !== oldHref) {
+      scheduleNavigationRefresh();
+    }
+    if (list.some((i) => i.type === "childList" && i.addedNodes.length > 0)) {
+      ensureTALinksThrottled();
+      attachWatchProgressListeners();
+      trackLikedVideoState();
+    }
   });
-  document.querySelectorAll('.ta-channel-button').forEach(button => {
-    button.parentElement.hasTA = false;
-    button.remove();
-  });
-  document.querySelectorAll('.ta-shorts-button').forEach(button => {
-    if (button.parentElement) button.parentElement.hasTA = false;
-    button.remove();
-  });
-}
-
-let oldHref = document.location.href;
-let navigationRefreshTimer = null;
-
-function throttled(callback, time) {
-  let throttleBlock = false;
-  let lastArgs;
-  return (...args) => {
-    lastArgs = args;
-    if (throttleBlock) return;
-    throttleBlock = true;
-    setTimeout(() => {
-      throttleBlock = false;
-      callback(...lastArgs);
-    }, time);
-  };
-}
-
-const handleLikeButtonClick = throttled(() => {
-  window.setTimeout(trackLikedVideoState, 50);
-  window.setTimeout(trackLikedVideoState, 250);
-}, 200);
-
-function handleHoverOverlayPointer(event) {
-  ensureThumbnailHoverOverlayButtonNear(event.target);
-}
-
-let observer = new MutationObserver(list => {
-  const currentHref = document.location.href;
-  if (currentHref !== oldHref) {
-    scheduleNavigationRefresh();
+  observer.observe(document.body, { attributes: false, childList: true, subtree: true });
+  function scheduleNavigationRefresh(delay = 0) {
+    if (navigationRefreshTimer) {
+      window.clearTimeout(navigationRefreshTimer);
+    }
+    navigationRefreshTimer = window.setTimeout(() => {
+      navigationRefreshTimer = null;
+      handleHistoryNavigationRefresh();
+    }, delay);
   }
-  if (list.some(i => i.type === 'childList' && i.addedNodes.length > 0)) {
-    ensureTALinks();
+  function handleHistoryNavigationRefresh() {
+    const currentHref = document.location.href;
+    if (currentHref === oldHref) {
+      ensureTALinksThrottled();
+      return;
+    }
+    cleanButtons();
+    oldHref = currentHref;
+    resetWatchProgressState(getCurrentPlaybackVideoId());
+    resetLikeQueueState(getCurrentPlaybackVideoId());
+    ensureTALinksThrottled();
     attachWatchProgressListeners();
     trackLikedVideoState();
   }
-});
-
-observer.observe(document.body, { attributes: false, childList: true, subtree: true });
-
-function scheduleNavigationRefresh(delay = 0) {
-  if (navigationRefreshTimer) {
-    window.clearTimeout(navigationRefreshTimer);
+  var watchProgressPlayer = null;
+  function handlePlaybackEvent() {
+    trackWatchProgress();
+    trackLikedVideoState();
   }
-  navigationRefreshTimer = window.setTimeout(() => {
-    navigationRefreshTimer = null;
-    handleHistoryNavigationRefresh();
-  }, delay);
-}
-
-function handleHistoryNavigationRefresh() {
-  const currentHref = document.location.href;
-  if (currentHref === oldHref) {
-    ensureTALinks();
-    return;
+  function detachWatchProgressListeners() {
+    if (!watchProgressPlayer)
+      return;
+    watchProgressPlayer.removeEventListener("timeupdate", handlePlaybackEvent);
+    watchProgressPlayer.removeEventListener("play", handlePlaybackEvent);
+    watchProgressPlayer.removeEventListener("playing", handlePlaybackEvent);
+    watchProgressPlayer.removeEventListener("pause", handlePlaybackEvent);
+    watchProgressPlayer.removeEventListener("loadedmetadata", handlePlaybackEvent);
+    watchProgressPlayer.removeEventListener("durationchange", handlePlaybackEvent);
+    watchProgressPlayer.removeEventListener("seeking", handlePlaybackEvent);
+    watchProgressPlayer.removeEventListener("seeked", handlePlaybackEvent);
+    watchProgressPlayer = null;
   }
-  cleanButtons();
-  oldHref = currentHref;
-  resetWatchProgressState(getCurrentPlaybackVideoId());
-  resetLikeQueueState(getCurrentPlaybackVideoId());
-  ensureTALinks();
-  attachWatchProgressListeners();
-  trackLikedVideoState();
-}
-
-window.addEventListener('popstate', () => {
-  scheduleNavigationRefresh();
-});
-
-window.addEventListener('pageshow', event => {
-  if (event.persisted) {
+  function attachWatchProgressListeners() {
+    let player = getPlaybackPlayer();
+    if (player === watchProgressPlayer)
+      return;
+    detachWatchProgressListeners();
+    if (!player)
+      return;
+    watchProgressPlayer = player;
+    player.addEventListener("timeupdate", handlePlaybackEvent);
+    player.addEventListener("play", handlePlaybackEvent);
+    player.addEventListener("playing", handlePlaybackEvent);
+    player.addEventListener("pause", handlePlaybackEvent);
+    player.addEventListener("loadedmetadata", handlePlaybackEvent);
+    player.addEventListener("durationchange", handlePlaybackEvent);
+    player.addEventListener("seeking", handlePlaybackEvent);
+    player.addEventListener("seeked", handlePlaybackEvent);
+  }
+  window.addEventListener("popstate", () => {
     scheduleNavigationRefresh();
-  }
-});
-
-document.addEventListener('yt-navigate-finish', () => {
-  scheduleNavigationRefresh();
-});
-
-document.addEventListener(
-  'click',
-  event => {
-    let button = event.target?.closest?.('button');
-    if (!button || !isLikeButton(button)) return;
-    handleLikeButtonClick();
-  },
-  true
-);
-document.addEventListener('pointerenter', handleHoverOverlayPointer, true);
-
-browserType.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== 'local') return;
-
-  if (changes.watchAutoQueue) {
-    watchAutoQueueEnabled = changes.watchAutoQueue.newValue?.checked === true;
-    if (!watchAutoQueueEnabled) {
-      resetWatchProgressState(getCurrentPlaybackVideoId());
-      detachWatchProgressListeners();
-    } else {
-      attachWatchProgressListeners();
-      trackWatchProgress();
-    }
-  }
-
-  if (changes.likeAutoQueue) {
-    likeAutoQueueEnabled = changes.likeAutoQueue.newValue?.checked === true;
-    if (!likeAutoQueueEnabled) {
-      resetLikeQueueState(getCurrentPlaybackVideoId());
-    } else {
-      trackLikedVideoState();
-    }
-  }
-});
-
-Promise.all([loadWatchAutoQueuePreference(), loadLikeAutoQueuePreference()]).then(() => {
-  logWatchProgress('preferences loaded', {
-    watchAutoQueueEnabled,
-    likeAutoQueueEnabled,
   });
-  resetWatchProgressState(getCurrentPlaybackVideoId());
-  resetLikeQueueState(getCurrentPlaybackVideoId());
-  attachWatchProgressListeners();
-  window.setInterval(trackWatchProgress, watchAutoQueuePollMs);
-  window.setInterval(trackLikedVideoState, watchAutoQueuePollMs);
-});
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      scheduleNavigationRefresh();
+    }
+  });
+  document.addEventListener("yt-navigate-finish", () => {
+    scheduleNavigationRefresh();
+  });
+  document.addEventListener(
+    "click",
+    (event) => {
+      var _a, _b;
+      let button = (_b = (_a = event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, "button");
+      if (!button || !isLikeButton(button))
+        return;
+      handleLikeButtonClick();
+    },
+    true
+  );
+  document.addEventListener("pointerenter", handleHoverOverlayPointer, true);
+  browserApi.storage.onChanged.addListener((changes, areaName) => {
+    var _a, _b;
+    if (areaName !== "local")
+      return;
+    if (changes.watchAutoQueue) {
+      const newVal = ((_a = changes.watchAutoQueue.newValue) == null ? void 0 : _a.checked) === true;
+      setWatchAutoQueueEnabled(newVal);
+      if (!newVal) {
+        resetWatchProgressState(getCurrentPlaybackVideoId());
+        detachWatchProgressListeners();
+      } else {
+        attachWatchProgressListeners();
+        trackWatchProgress();
+      }
+    }
+    if (changes.likeAutoQueue) {
+      const newVal = ((_b = changes.likeAutoQueue.newValue) == null ? void 0 : _b.checked) === true;
+      setLikeAutoQueueEnabled(newVal);
+      if (!newVal) {
+        resetLikeQueueState(getCurrentPlaybackVideoId());
+      } else {
+        trackLikedVideoState();
+      }
+    }
+  });
+  Promise.all([loadWatchAutoQueuePreference(), loadLikeAutoQueuePreference()]).then(() => {
+    resetWatchProgressState(getCurrentPlaybackVideoId());
+    resetLikeQueueState(getCurrentPlaybackVideoId());
+    attachWatchProgressListeners();
+    window.setInterval(trackWatchProgress, watchAutoQueuePollMs);
+    window.setInterval(trackLikedVideoState, watchAutoQueuePollMs);
+  });
+})();
