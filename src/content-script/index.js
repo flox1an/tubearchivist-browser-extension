@@ -6,7 +6,7 @@ import {
   videoLinkSelector,
 } from '../common/selectors.js';
 import { downloadIcon } from '../common/icons.js';
-import { browserApi, checkVideoExists, t } from './api.js';
+import { browserApi, t } from './api.js';
 import {
   getCurrentPlaybackVideoId,
   getPlaybackPlayer,
@@ -28,9 +28,7 @@ import {
   createRoundedDownloadButton,
   buildVideoButton,
   buildChannelButton,
-  setButtonOpenState,
-  setButtonDefaultState,
-  buttonError,
+  refreshVideoButtonState,
   sendDownload,
   captureDownloadButtonPointerEvents,
 } from './button-factory.js';
@@ -320,7 +318,7 @@ function prepareVideoButtonContainer(container, taButton) {
         if (currentBtn) {
           currentBtn.classList.add('ta-visible');
           if (!currentBtn.isChecked) {
-            checkVideoExists(currentBtn, setButtonOpenState, setButtonDefaultState, buttonError);
+            refreshVideoButtonState(currentBtn);
           }
         }
       });
@@ -348,7 +346,7 @@ function prepareVideoButtonContainer(container, taButton) {
       let currentBtn = container.querySelector('.ta-button');
       if (currentBtn) {
         if (!currentBtn.isChecked) {
-          checkVideoExists(currentBtn, setButtonOpenState, setButtonDefaultState, buttonError);
+          refreshVideoButtonState(currentBtn);
         }
         currentBtn.classList.add('ta-visible');
       }
@@ -399,8 +397,7 @@ function ensureShortsThumbnailFallbackButtons() {
       if (existingButton.dataset.id !== videoId) {
         existingButton.setAttribute('data-id', videoId);
         existingButton.title = `${t('download_video', 'TA download video')}: ${videoId}`;
-        existingButton.isChecked = false;
-        checkVideoExists(existingButton, setButtonOpenState, setButtonDefaultState, buttonError);
+        refreshVideoButtonState(existingButton);
       }
       continue;
     }
@@ -426,7 +423,6 @@ function ensureShortsThumbnailFallbackButtons() {
     button.classList.add('ta-variant-shorts-grid');
 
     container.appendChild(button);
-    checkVideoExists(button, setButtonOpenState, setButtonDefaultState, buttonError);
   }
 }
 
@@ -508,8 +504,7 @@ function ensureThumbnailHoverOverlayButton(overlay) {
     if (existingButton.dataset.id !== videoId) {
       existingButton.setAttribute('data-id', videoId);
       existingButton.title = `${t('download_video', 'TA download video')}: ${videoId}`;
-      existingButton.isChecked = false;
-      checkVideoExists(existingButton, setButtonOpenState, setButtonDefaultState, buttonError);
+      refreshVideoButtonState(existingButton);
     }
     return true;
   }
@@ -536,7 +531,6 @@ function ensureThumbnailHoverOverlayButton(overlay) {
   actionRow.appendChild(taButton);
   overlay.appendChild(actionRow);
 
-  checkVideoExists(taButton, setButtonOpenState, setButtonDefaultState, buttonError);
   return true;
 }
 
@@ -663,7 +657,7 @@ function ensureTALinks() {
         let { wrapper, btn } = result;
         shortsContainer.insertBefore(wrapper, shortsContainer.firstElementChild);
         shortsContainer.hasTA = true;
-        checkVideoExists(btn, setButtonOpenState, setButtonDefaultState, buttonError);
+        refreshVideoButtonState(btn);
       }
     }
   }

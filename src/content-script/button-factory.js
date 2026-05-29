@@ -58,6 +58,7 @@ export function createRoundedDownloadButton(videoId, options = {}) {
   });
 
   captureDownloadButtonPointerEvents(dlButton);
+  refreshVideoButtonState(dlButton);
   return dlButton;
 }
 
@@ -111,6 +112,7 @@ export function buildVideoButton(videoId, titleContainer, variant = 'default') {
 
   // Variable padding/styling for rectangular buttons
   captureDownloadButtonPointerEvents(dlButton);
+  refreshVideoButtonState(dlButton);
   return dlButton;
 }
 
@@ -152,6 +154,14 @@ export function setButtonOpenState(button, openUrl) {
   buttonSpan.title = t('open_in_ta', 'Open in TA');
   button.dataset.taState = 'open';
   button.dataset.openUrl = openUrl;
+}
+
+export function refreshVideoButtonState(button) {
+  if (!button || button.dataset.type !== 'video' || !button.dataset.id) return;
+
+  setButtonDefaultState(button);
+  button.isChecked = false;
+  checkVideoExists(button, setButtonOpenState, setButtonDefaultState);
 }
 
 export function buttonError(button) {
@@ -296,7 +306,7 @@ export function buildChannelDownloadButton() {
   });
 
   if (channelDownloadButton.dataset.type === 'video') {
-    checkVideoExists(channelDownloadButton, setButtonOpenState, setButtonDefaultState, buttonError);
+    refreshVideoButtonState(channelDownloadButton);
   }
 
   return channelDownloadButton;

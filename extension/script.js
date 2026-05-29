@@ -158,8 +158,13 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
     }
     return fallbackValue;
   }
-  function checkVideoExists(taButton, setButtonOpenState2, setButtonDefaultState2, buttonError2) {
+  function checkVideoExists(taButton, setButtonOpenState2, setButtonDefaultState2) {
+    let videoId = taButton.dataset.id;
+    if (!videoId)
+      return;
     function applyExistsState(message) {
+      if (taButton.dataset.id !== videoId)
+        return;
       if (typeof message === "string" && message) {
         setButtonOpenState2(taButton, message);
       } else {
@@ -168,15 +173,13 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
       taButton.isChecked = true;
     }
     function handleError(e) {
-      buttonError2(taButton);
+      if (taButton.dataset.id !== videoId)
+        return;
+      setButtonDefaultState2(taButton);
       taButton.isChecked = true;
-      let videoId2 = taButton.dataset.id;
-      console.log(`error: failed to get info from TA for video ${videoId2}`);
+      console.log(`error: failed to get info from TA for video ${videoId}`);
       console.error(e);
     }
-    let videoId = taButton.dataset.id;
-    if (!videoId)
-      return;
     if (videoExistsCache.has(videoId)) {
       let cached = videoExistsCache.get(videoId);
       if (cached === true) {
@@ -600,6 +603,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
       e.stopPropagation();
     });
     captureDownloadButtonPointerEvents(dlButton);
+    refreshVideoButtonState(dlButton);
     return dlButton;
   }
   function buildVideoButton(videoId, titleContainer, variant = "default") {
@@ -634,6 +638,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
       e.stopPropagation();
     });
     captureDownloadButtonPointerEvents(dlButton);
+    refreshVideoButtonState(dlButton);
     return dlButton;
   }
   function styleChannelDownloadSegmentIcon(button) {
@@ -665,6 +670,13 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
     buttonSpan.title = t("open_in_ta", "Open in TA");
     button.dataset.taState = "open";
     button.dataset.openUrl = openUrl;
+  }
+  function refreshVideoButtonState(button) {
+    if (!button || button.dataset.type !== "video" || !button.dataset.id)
+      return;
+    setButtonDefaultState(button);
+    button.isChecked = false;
+    checkVideoExists(button, setButtonOpenState, setButtonDefaultState);
   }
   function buttonError(button) {
     button.dataset.taState = "error";
@@ -795,7 +807,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
       e.stopPropagation();
     });
     if (channelDownloadButton.dataset.type === "video") {
-      checkVideoExists(channelDownloadButton, setButtonOpenState, setButtonDefaultState, buttonError);
+      refreshVideoButtonState(channelDownloadButton);
     }
     return channelDownloadButton;
   }
@@ -1078,7 +1090,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
           if (currentBtn) {
             currentBtn.classList.add("ta-visible");
             if (!currentBtn.isChecked) {
-              checkVideoExists(currentBtn, setButtonOpenState, setButtonDefaultState, buttonError);
+              refreshVideoButtonState(currentBtn);
             }
           }
         });
@@ -1104,7 +1116,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
         let currentBtn = container.querySelector(".ta-button");
         if (currentBtn) {
           if (!currentBtn.isChecked) {
-            checkVideoExists(currentBtn, setButtonOpenState, setButtonDefaultState, buttonError);
+            refreshVideoButtonState(currentBtn);
           }
           currentBtn.classList.add("ta-visible");
         }
@@ -1148,8 +1160,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
         if (existingButton.dataset.id !== videoId) {
           existingButton.setAttribute("data-id", videoId);
           existingButton.title = `${t("download_video", "TA download video")}: ${videoId}`;
-          existingButton.isChecked = false;
-          checkVideoExists(existingButton, setButtonOpenState, setButtonDefaultState, buttonError);
+          refreshVideoButtonState(existingButton);
         }
         continue;
       }
@@ -1172,7 +1183,6 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
       });
       button.classList.add("ta-variant-shorts-grid");
       container.appendChild(button);
-      checkVideoExists(button, setButtonOpenState, setButtonDefaultState, buttonError);
     }
   }
   function getVideoIdForHoverOverlay(overlay) {
@@ -1248,8 +1258,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
       if (existingButton.dataset.id !== videoId) {
         existingButton.setAttribute("data-id", videoId);
         existingButton.title = `${t("download_video", "TA download video")}: ${videoId}`;
-        existingButton.isChecked = false;
-        checkVideoExists(existingButton, setButtonOpenState, setButtonDefaultState, buttonError);
+        refreshVideoButtonState(existingButton);
       }
       return true;
     }
@@ -1272,7 +1281,6 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
     let taButton = buildHoverOverlayVideoButton(videoId);
     actionRow.appendChild(taButton);
     overlay.appendChild(actionRow);
-    checkVideoExists(taButton, setButtonOpenState, setButtonDefaultState, buttonError);
     return true;
   }
   function ensureThumbnailHoverOverlayButtonNear(element) {
@@ -1380,7 +1388,7 @@ viewBox="0 0 500 500" style="enable-background:new 0 0 500 500;" xml:space="pres
           let { wrapper, btn } = result;
           shortsContainer.insertBefore(wrapper, shortsContainer.firstElementChild);
           shortsContainer.hasTA = true;
-          checkVideoExists(btn, setButtonOpenState, setButtonDefaultState, buttonError);
+          refreshVideoButtonState(btn);
         }
       }
     }

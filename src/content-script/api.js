@@ -43,8 +43,13 @@ export function t(key, fallbackValue) {
   return fallbackValue;
 }
 
-export function checkVideoExists(taButton, setButtonOpenState, setButtonDefaultState, buttonError) {
+export function checkVideoExists(taButton, setButtonOpenState, setButtonDefaultState) {
+  let videoId = taButton.dataset.id;
+  if (!videoId) return;
+
   function applyExistsState(message) {
+    if (taButton.dataset.id !== videoId) return;
+
     if (typeof message === 'string' && message) {
       setButtonOpenState(taButton, message);
     } else {
@@ -53,15 +58,13 @@ export function checkVideoExists(taButton, setButtonOpenState, setButtonDefaultS
     taButton.isChecked = true;
   }
   function handleError(e) {
-    buttonError(taButton);
+    if (taButton.dataset.id !== videoId) return;
+
+    setButtonDefaultState(taButton);
     taButton.isChecked = true;
-    let videoId = taButton.dataset.id;
     console.log(`error: failed to get info from TA for video ${videoId}`);
     console.error(e);
   }
-
-  let videoId = taButton.dataset.id;
-  if (!videoId) return;
 
   if (videoExistsCache.has(videoId)) {
     let cached = videoExistsCache.get(videoId);
